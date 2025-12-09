@@ -1,0 +1,7 @@
+{
+  "name": "Trinity Inventory Apps",
+  "description": "Aplikasi untuk mengelola inventori aset PT. Triniti Media Indonesia, mencakup permintaan, pencatatan, serah terima, dan penghapusan aset.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

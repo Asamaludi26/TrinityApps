@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inventori Aset - Triniti Media</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', '"Noto Sans"', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
+            },
+            colors: {
+              'tm-primary': '#1D4ED8', // Blue 700
+              'tm-primary-hover': '#1E40AF', // Blue 800
+              'tm-secondary': '#6B7280', // Gray 500
+              'tm-accent': '#3B82F6', // Blue 500
+              'tm-light': '#F3F4F6', // Gray 100
+              'tm-dark': '#111827', // Gray 900
+
+              // Semantic colors for statuses and actions
+              success: {
+                DEFAULT: '#16A34A', // Green 600
+                light: '#DCFCE7',   // Green 100
+                text: '#15803D'     // Green 700
+              },
+              danger: {
+                DEFAULT: '#DC2626', // Red 600
+                light: '#FEE2E2',   // Red 100
+                text: '#B91C1C'     // Red 700
+              },
+              warning: {
+                DEFAULT: '#FBBF24', // Amber 400
+                light: '#FEF3C7',   // Amber 100
+                text: '#B45309'     // Amber 700
+              },
+               info: {
+                DEFAULT: '#2563EB', // Blue 600
+                light: '#DBEAFE',   // Blue 100
+                text: '#1E40AF'     // Blue 800
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+    <style>
+      /* Custom scrollbar styles for a professional and consistent look */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 7px; /* A refined, slightly slimmer width */
+        height: 7px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #F3F4F6; /* tm-light, matches the app's light background */
+        border-radius: 10px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #9CA3AF; /* A neutral gray-400 for a subtle default state */
+        border-radius: 10px;
+        border: 2px solid #F3F4F6; /* Creates padding around the thumb matching the track */
+        transition: background-color 0.2s ease-out; /* Smooth transition for hover */
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #3B82F6; /* Use tm-accent color on hover for brand consistency and feedback */
+      }
+      /* For Firefox */
+      .custom-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: #9CA3AF #F3F4F6; /* thumb color track color */
+      }
+
+      /* Custom scrollbar for dark backgrounds like the sidebar */
+      .dark-scrollbar::-webkit-scrollbar {
+        width: 7px;
+        height: 7px;
+      }
+      .dark-scrollbar::-webkit-scrollbar-track {
+        background: #1F2937; /* A slightly lighter dark gray than tm-dark (gray-800) */
+        border-radius: 10px;
+      }
+      .dark-scrollbar::-webkit-scrollbar-thumb {
+        background: #4B5563; /* A neutral gray-600 */
+        border-radius: 10px;
+        border: 2px solid #1F2937; /* Padding matches the track color */
+      }
+      .dark-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #3B82F6; /* tm-accent on hover */
+      }
+      /* For Firefox */
+      .dark-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: #4B5563 #1F2937; /* thumb color track color */
+      }
+
+      /* Hide the default spinners on number inputs for a cleaner look */
+      input[type=number]::-webkit-inner-spin-button,
+      input[type=number]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      input[type=number] {
+        -moz-appearance: textfield;
+      }
+      
+      /* Animation for notification popups */
+      @keyframes fade-in-up {
+        from {
+          opacity: 0;
+          transform: translateY(1rem);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      .animate-fade-in-up {
+        animation: fade-in-up 0.3s ease-out forwards;
+      }
+
+      @keyframes zoom-in {
+        from {
+          opacity: 0;
+          transform: scale(0.95);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      .animate-zoom-in {
+        animation: zoom-in 0.2s ease-out forwards;
+      }
+      
+      @keyframes pulse-slow {
+        50% {
+          background-color: #fef3c7; /* amber-100 */
+        }
+      }
+      .animate-pulse-slow {
+        animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      
+      .bar-chart-bar {
+        transition: height 0.5s ease-out;
+      }
+
+      /* Simplified styles for printing. The main logic is now in JS. */
+      @media print {
+        body {
+          background-color: #fff !important;
+        }
+        .no-print {
+          display: none !important;
+        }
+      }
+
+      /* Fix for html5-qrcode video element not filling its container */
+      #global-qr-reader video {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: cover !important;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react-icons/": "https://esm.sh/react-icons/",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0",
+    "zustand/": "https://aistudiocdn.com/zustand@^5.0.9/",
+    "zustand": "https://aistudiocdn.com/zustand@^5.0.9",
+    "@nestjs/common": "https://aistudiocdn.com/@nestjs/common@^11.1.9",
+    "@nestjs/core": "https://aistudiocdn.com/@nestjs/core@^11.1.9"
+  }
+}
+</script>
+</head>
+  <body class="bg-tm-light font-sans">
+    <div id="root"></div>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
