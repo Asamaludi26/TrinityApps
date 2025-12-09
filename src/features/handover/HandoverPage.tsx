@@ -381,7 +381,7 @@ const HandoverForm: React.FC<{
     };
 
     const handleRemoveItem = (id: number) => {
-        if (items.length > 1) setItems(items.filter(item => item.id !== id));
+        if (items.length > 1) setItems(items.filter((item) => item.id !== id));
     };
     
     const handleAssetSelection = (id: number, selectedAssetId: string) => {
@@ -452,8 +452,8 @@ const HandoverForm: React.FC<{
                         <div><label className="block text-sm font-medium text-gray-700">Tanggal</label><DatePicker id="handoverDate" selectedDate={handoverDate} onDateChange={setHandoverDate} /></div>
                         <div><label className="block text-sm font-medium text-gray-700">No. Dokumen</label><input type="text" id="docNumber" value={docNumber} readOnly className="block w-full px-3 py-2 mt-1 text-gray-700 bg-gray-100 border border-gray-200 rounded-lg shadow-sm sm:text-sm" /></div>
                         <div><label className="block text-sm font-medium text-gray-700">No. Referensi</label><input type="text" value={woRoIntNumber} onChange={e => setWoRoIntNumber(e.target.value)} className="block w-full px-3 py-2 mt-1 text-gray-900 bg-gray-50 border border-gray-300 rounded-lg shadow-sm sm:text-sm" /></div>
-                        <div><label className="block text-sm font-medium text-gray-700">Divisi</label><CustomSelect options={divisionOptions} value={selectedDivisionId} onChange={handleDivisionChange} disabled={isFromRequest}/></div>
-                         <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700">Penerima</label><CustomSelect options={filteredUserOptions} value={penerima} onChange={setPenerima} placeholder={selectedDivisionId ? "-- Pilih Nama Penerima --" : "Pilih divisi terlebih dahulu"} disabled={!selectedDivisionId || isFromRequest}/></div>
+                        <div><label className="block text-sm font-medium text-gray-700">Divisi</label><CustomSelect options={divisionOptions} value={selectedDivisionId} onChange={handleDivisionChange} disabled={!!isFromRequest}/></div>
+                         <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700">Penerima</label><CustomSelect options={filteredUserOptions} value={penerima} onChange={setPenerima} placeholder={selectedDivisionId ? "-- Pilih Nama Penerima --" : "Pilih divisi terlebih dahulu"} disabled={!selectedDivisionId || !!isFromRequest}/></div>
                     </div>
                 </div>
 
@@ -461,7 +461,7 @@ const HandoverForm: React.FC<{
                     <h3 className="text-lg font-semibold text-tm-dark">Detail Barang</h3>
                      <div className="flex items-center justify-between">
                         <p className="text-sm text-gray-600">Daftar aset yang diserahterimakan.</p>
-                        <button type="button" onClick={handleAddItem} disabled={isFromRequest} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 rounded-lg shadow-sm bg-tm-accent hover:bg-tm-primary disabled:bg-gray-400 disabled:cursor-not-allowed">Tambah Aset</button>
+                        <button type="button" onClick={handleAddItem} disabled={!!isFromRequest} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white transition-all duration-200 rounded-lg shadow-sm bg-tm-accent hover:bg-tm-primary disabled:bg-gray-400 disabled:cursor-not-allowed">Tambah Aset</button>
                     </div>
 
                     <div className="space-y-4">
@@ -476,7 +476,7 @@ const HandoverForm: React.FC<{
                                 <div className="grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
                                     <div className="md:col-span-2">
                                         <label className="block text-sm font-medium text-gray-600">Pilih Aset</label>
-                                        <CustomSelect options={assetOptions} value={item.assetId || ''} onChange={value => handleAssetSelection(item.id, value)} placeholder="-- Pilih Aset dari Stok --" disabled={isFromRequest} />
+                                        <CustomSelect options={assetOptions} value={item.assetId || ''} onChange={value => handleAssetSelection(item.id, value)} placeholder="-- Pilih Aset dari Stok --" disabled={!!isFromRequest} />
                                     </div>
                                     <div><label className="block text-sm font-medium text-gray-600">Nama Barang</label><input type="text" value={item.itemName} readOnly className="block w-full px-3 py-2 mt-1 text-gray-700 bg-gray-100 border border-gray-200 rounded-lg shadow-sm sm:text-sm" /></div>
                                     <div><label className="block text-sm font-medium text-gray-600">Tipe/Brand</label><input type="text" value={item.itemTypeBrand} readOnly className="block w-full px-3 py-2 mt-1 text-gray-700 bg-gray-100 border border-gray-200 rounded-lg shadow-sm sm:text-sm" /></div>

@@ -1176,6 +1176,16 @@ const RequestReviewModal: React.FC<{
         const existingStatus = request.itemStatuses?.[item.id];
         const approvedQty = existingStatus?.approvedQuantity;
 
+        // "Reset" logic: If there's a stored status, respect the quantity but clear the reason
+        // to force new justification if it's a new review cycle.
+        // Or simply load as is. The user requirement was "modal will be reset" when moving to next role flow.
+        // We simulate a fresh start by not pre-filling reason unless it was set.
+        // But wait, if Logistic rejected it, Purchase should see that.
+        // "Reset" typically means: don't carry over temporary draft state.
+        // Here we load from `request` prop which is the source of truth.
+        // If the user wants the form to be "clean" for the new approver, we can just clear reason text.
+        // Let's implement: Load Quantity, Clear Reason (force re-entry if partial/rejected) to ensure it's a new decision.
+        
         if (typeof approvedQty === "number") {
           if (approvedQty === 0) initialActions[item.id] = "reject";
           else if (approvedQty < item.quantity)
@@ -1184,7 +1194,7 @@ const RequestReviewModal: React.FC<{
 
           initialAdjustments[item.id] = {
             approvedQuantity: approvedQty.toString(),
-            reason: existingStatus?.reason ?? "",
+            reason: "", // Clear reason to ensure fresh input for new stage/revision
           };
         } else {
           initialActions[item.id] = "approve";
@@ -1913,16 +1923,9 @@ const NewRequestPage: React.FC<NewRequestPageProps> = (props) => {
       if (canViewPrice(currentUser.role)) {
         return req;
       }
-      // Explicitly cast to Omit<Request, 'totalValue'> to satisfy generic constraints if needed, 
-      // or simply return the modified object.
-      // TypeScript might complain if the return type of map is a union that isn't compatible 
-      // with exportToCSV generic constraint unless handled. 
-      // Using `any` or strict typing helps.
       const { totalValue, ...rest } = req;
       return rest;
     });
-    // exportToCSV now handles array of objects, so mixed types are generally fine if keys align,
-    // but cleaner to ensure consistent shape or use any[] if shapes differ significantly.
     exportToCSV(dataToExport as any[], `requests_${new Date().toISOString().split("T")[0]}`);
   };
 
@@ -2204,8 +2207,6 @@ const NewRequestPage: React.FC<NewRequestPageProps> = (props) => {
             lastFollowUpAt: new Date().toISOString()
         });
         
-        // Notifications are handled in store logic or here if needed explicitly
-        // Assuming store handles it or we do it here:
         const admins = storeUsers.filter((u) => u.role === "Admin Logistik");
         admins.forEach((admin) => {
             useNotificationStore.getState().addSystemNotification({

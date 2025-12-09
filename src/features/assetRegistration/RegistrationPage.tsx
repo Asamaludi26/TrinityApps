@@ -54,7 +54,7 @@ interface ItemRegistrationProps {
     assetToViewId: string | null;
     initialFilters?: any;
     onClearInitialFilters: () => void;
-    itemToEdit: { type: string; data: any } | null;
+    itemToEdit: { type: string; id?: string; data?: any } | null;
     onClearItemToEdit: () => void;
     onShowPreview: (data: PreviewData) => void;
     setActivePage: (page: Page, initialState?: any) => void;
@@ -85,9 +85,6 @@ export const getStatusClass = (status: AssetStatus) => {
         default: return 'bg-gray-100 text-gray-800';
     }
 };
-
-// ... (SortableHeader & RegistrationTable kept same as before for brevity, omitted here but assumed present)
-// RE-INSERTING REGISTRATION TABLE COMPONENTS FOR COMPLETENESS
 
 const SortableHeader: React.FC<{
     children: React.ReactNode;
@@ -226,7 +223,6 @@ interface RegistrationFormProps {
 }
 
 const RegistrationForm: React.FC<RegistrationFormProps> = ({ onBack, onSave, prefillData, editingAsset, currentUser, onStartScan, bulkItems, setBulkItems, assetCategories, setActivePage, openModelModal, openTypeModal }) => {
-    // ... (Copied from previous logic, ensuring local modal triggers are used)
     // STATE
     const isEditing = !!editingAsset;
     const [assetName, setAssetName] = useState('');
@@ -512,7 +508,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onBack, onSave, pre
                         <div>
                             <label htmlFor="type" className="block text-sm font-medium text-gray-700">Tipe Aset</label>
                              <div className="mt-1">
-                                <CustomSelect options={typeOptions} value={assetTypeId} onChange={handleTypeChange} placeholder={selectedCategoryId ? '-- Pilih Tipe --' : 'Pilih kategori dahulu'} disabled={!selectedCategoryId || !!prefillData} emptyStateMessage="Tidak ada tipe untuk kategori ini." emptyStateButtonLabel="Tambah Tipe Aset" onEmptyStateClick={() => { if (selectedCategory) openTypeModal(selectedCategory, null); }} />
+                                <CustomSelect options={typeOptions} value={assetTypeId} onChange={handleTypeChange} placeholder={selectedCategoryId ? '-- Pilih Tipe --' : 'Pilih kategori dahulu'} disabled={!selectedCategoryId || !!prefillData} emptyStateMessage="Tidak ada tipe." emptyStateButtonLabel="Tambah Tipe Aset" onEmptyStateClick={() => { if (selectedCategory) openTypeModal(selectedCategory, null); }} />
                             </div>
                         </div>
                          <div>
@@ -598,10 +594,11 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onBack, onSave, pre
                         <label className="block text-sm font-medium text-gray-700">Unggah File (Foto, Invoice, dll)</label>
                         <div className="flex items-center justify-center w-full px-6 pt-5 pb-6 mt-1 border-2 border-gray-300 border-dashed rounded-md">
                             <div className="space-y-1 text-center">
-                            <svg className="w-12 h-12 mx-auto text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            <svg className="w-12 h-12 mx-auto text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
                                 <div className="flex text-sm text-gray-600">
                                     <label htmlFor="file-upload" className="relative font-medium bg-white rounded-md cursor-pointer text-tm-primary hover:text-tm-accent focus-within:outline-none">
-                                        <span>Pilih file</span><input id="file-upload" name="file-upload" type="file" className="sr-only" multiple onChange={handleFileChange} />
+                                        <span>Unggah file</span>
+                                        <input id="file-upload" name="file-upload" type="file" className="sr-only" multiple onChange={handleFileChange} />
                                     </label>
                                     <p className="pl-1">atau tarik dan lepas</p>
                                 </div>
@@ -613,7 +610,9 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onBack, onSave, pre
                                 {attachments.map(file => (
                                     <div key={file.name} className="flex items-center justify-between p-2 text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-md">
                                         <span className="truncate">{file.name}</span>
-                                        <button type="button" onClick={() => removeAttachment(file.name)} className="text-red-500 hover:text-red-700"><TrashIcon className="w-4 h-4" /></button>
+                                        <button type="button" onClick={() => removeAttachment(file.name)} className="text-red-500 hover:text-red-700">
+                                            <TrashIcon className="w-4 h-4" />
+                                        </button>
                                     </div>
                                 ))}
                             </div>
@@ -621,8 +620,11 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onBack, onSave, pre
                     </div>
                 </FormSection>
 
-                <div ref={footerRef} className="flex justify-end pt-5 mt-4 space-x-3 border-t border-gray-200">
-                    <ActionButtons formId={formId} />
+                <div
+                  ref={footerRef}
+                  className="flex justify-end pt-4 mt-4 border-t border-gray-200"
+                >
+                  <ActionButtons formId={formId} />
                 </div>
             </form>
             <FloatingActionBar isVisible={!isFooterVisible}>
@@ -632,176 +634,246 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({ onBack, onSave, pre
     );
 };
 
+// ItemRegistration Component
 const ItemRegistration: React.FC<ItemRegistrationProps> = (props) => {
-    const { currentUser: propUser, prefillData, onClearPrefill, onShowPreview, onInitiateHandover, onInitiateDismantle, onInitiateInstallation, assetToViewId, initialFilters, onClearInitialFilters, itemToEdit, onClearItemToEdit, setActivePage, setIsGlobalScannerOpen, setScanContext, setFormScanCallback } = props;
-    
+    const { 
+        currentUser, prefillData, onClearPrefill, onInitiateHandover, onInitiateDismantle, 
+        onInitiateInstallation, initialFilters, onClearInitialFilters, itemToEdit, 
+        onClearItemToEdit, onShowPreview, setActivePage, setIsGlobalScannerOpen, 
+        setScanContext, setFormScanCallback 
+    } = props;
+
+    // Stores
     const assets = useAssetStore((state) => state.assets);
     const addAsset = useAssetStore((state) => state.addAsset);
     const updateAsset = useAssetStore((state) => state.updateAsset);
     const deleteAsset = useAssetStore((state) => state.deleteAsset);
     const assetCategories = useAssetStore((state) => state.categories);
-    
     const updateRequestRegistration = useRequestStore((state) => state.updateRequestRegistration);
-    // FIX: Correctly reference `addToast` action from the store. 'addNotification' does not exist.
-    const addNotification = useNotificationStore((state) => state.addToast);
-    const storeUser = useAuthStore((state) => state.currentUser);
-    const currentUser = storeUser || propUser;
 
     const [view, setView] = useState<'list' | 'form'>('list');
-    const [assetToEdit, setAssetToEdit] = useState<Asset | null>(null);
+    const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+    const [bulkItems, setBulkItems] = useState<{ id: number; serialNumber: string; macAddress: string }[]>([]);
+    
+    // List State
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
     const [isBulkSelectMode, setIsBulkSelectMode] = useState(false);
+    const [assetToDeleteId, setAssetToDeleteId] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
-    const [bulkItems, setBulkItems] = useState<{ id: number; serialNumber: string; macAddress: string }[]>([{ id: Date.now(), serialNumber: '', macAddress: '' }]);
-    
-    // Modal States for Local Management
+    const addNotification = useNotification();
+
+    // Modal States
     const [modelModalState, setModelModalState] = useState<{ isOpen: boolean; category: AssetCategory | null; type: AssetType | null }>({ isOpen: false, category: null, type: null });
     const [typeModalState, setTypeModalState] = useState<{ isOpen: boolean; category: AssetCategory | null; typeToEdit: AssetType | null }>({ isOpen: false, category: null, typeToEdit: null });
-    
+
     const openModelModal = (category: AssetCategory, type: AssetType) => {
         setModelModalState({ isOpen: true, category, type });
     };
+    
     const openTypeModal = (category: AssetCategory, typeToEdit: AssetType | null) => {
         setTypeModalState({ isOpen: true, category, typeToEdit });
     };
 
-    const addNotificationUI = useNotification();
-
+    // Routing Effect
     useEffect(() => {
-        if (prefillData) {
+        if (prefillData || itemToEdit) {
+            if (itemToEdit && itemToEdit.id) {
+                const asset = assets.find(a => a.id === itemToEdit.id);
+                if (asset) setEditingAsset(asset);
+            }
             setView('form');
+        } else {
+            setView('list');
+            setEditingAsset(null);
+            setBulkItems([]);
         }
-        if (itemToEdit && itemToEdit.type === 'asset') {
-             setAssetToEdit(itemToEdit.data);
-             setView('form');
-        }
-        if (assetToViewId) {
-             onShowPreview({ type: 'asset', id: assetToViewId });
-        }
-    }, [prefillData, itemToEdit, assetToViewId, onShowPreview]);
-    
-    // Filter Logic
+    }, [prefillData, itemToEdit, assets]);
+
+    // Filtering
     const filteredAssets = useMemo(() => {
         return assets.filter(asset => {
-             const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                                   asset.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                   (asset.serialNumber && asset.serialNumber.toLowerCase().includes(searchQuery.toLowerCase()));
-             return matchesSearch;
+            const searchLower = searchQuery.toLowerCase();
+            return (
+                asset.name.toLowerCase().includes(searchLower) ||
+                asset.id.toLowerCase().includes(searchLower) ||
+                (asset.serialNumber && asset.serialNumber.toLowerCase().includes(searchLower)) ||
+                (asset.currentUser && asset.currentUser.toLowerCase().includes(searchLower))
+            );
         });
     }, [assets, searchQuery]);
-    
+
     const { items: sortedAssets, requestSort, sortConfig } = useSortableData<Asset>(filteredAssets, { key: 'registrationDate', direction: 'descending' });
+    
     const totalItems = sortedAssets.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     const paginatedAssets = sortedAssets.slice(startIndex, endIndex);
 
-    const handleSave = async (formData: RegistrationFormData, assetIdToUpdate?: string) => {
-        const activityLog: ActivityLogEntry = {
-            id: `log-${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            user: currentUser.name,
-            action: assetIdToUpdate ? 'Aset Diperbarui' : 'Aset Dicatat',
-            details: assetIdToUpdate ? 'Data aset diperbarui.' : `Aset baru dicatat.`,
-            referenceId: formData.relatedRequestId || undefined
-        };
-        
-        const baseAsset: Omit<Asset, 'id'> = {
-            ...formData,
-            name: formData.assetName,
-            purchasePrice: formData.purchasePrice || 0,
-            attachments: formData.attachments,
-            activityLog: [activityLog],
-            status: AssetStatus.IN_STORAGE
-        };
-
-        try {
-             if (assetIdToUpdate) {
-                 // Editing
-                 await updateAsset(assetIdToUpdate, baseAsset);
-                 addNotificationUI(`Aset ${assetIdToUpdate} berhasil diperbarui.`, 'success');
-             } else {
-                 // Creating New
-                 const newAssets = formData.bulkItems.map((item, index) => {
-                     const newId = `AST-${String(assets.length + index + 1).padStart(4, '0')}`;
-                     return {
-                         ...baseAsset,
-                         id: newId,
-                         serialNumber: item.serialNumber || undefined,
-                         macAddress: item.macAddress || undefined
-                     } as Asset;
-                 });
-                 
-                 for (const asset of newAssets) {
-                     await addAsset(asset);
-                 }
-                 
-                 if (formData.relatedRequestId && prefillData?.itemToRegister) {
-                     // Update Request Status Parsial
-                     const allDone = await updateRequestRegistration(formData.relatedRequestId, prefillData.itemToRegister.id, newAssets.length);
-                     if (allDone) {
-                         addNotificationUI(`Semua item untuk request ${formData.relatedRequestId} telah dicatat.`, 'success');
-                     }
-                 }
-                 
-                 addNotificationUI(`${newAssets.length} aset berhasil dicatat.`, 'success');
-             }
-             
-             if (prefillData) onClearPrefill();
-             if (itemToEdit) onClearItemToEdit();
-             setView('list');
-             setAssetToEdit(null);
-        } catch (e) {
-            addNotificationUI('Gagal menyimpan data aset.', 'error');
-        }
-    };
-    
-    const handleDelete = async (id: string) => {
-        await deleteAsset(id);
-        addNotificationUI(`Aset ${id} dihapus.`, 'success');
-    };
-
+    // Handlers
     const handleStartScan = (itemId: number) => {
         setScanContext('form');
         setFormScanCallback(() => (data: ParsedScanResult) => {
             setBulkItems(prev => prev.map(item => {
                 if (item.id === itemId) {
-                     return { ...item, serialNumber: data.serialNumber || item.serialNumber, macAddress: data.macAddress || item.macAddress };
+                    return {
+                        ...item,
+                        serialNumber: data.serialNumber || item.serialNumber,
+                        macAddress: data.macAddress || item.macAddress
+                    };
                 }
                 return item;
             }));
+            addNotification('Data berhasil dipindai.', 'success');
         });
         setIsGlobalScannerOpen(true);
     };
 
+    const handleSave = async (data: RegistrationFormData, assetIdToUpdate?: string) => {
+        try {
+            if (assetIdToUpdate) {
+                // Update Logic
+                const updatedAsset = {
+                    ...data,
+                    // Map form data to Asset fields
+                    name: data.assetName,
+                    // serialNumber and macAddress come from the first bulkItem in editing mode
+                    serialNumber: data.bulkItems[0]?.serialNumber,
+                    macAddress: data.bulkItems[0]?.macAddress,
+                };
+                // Remove helper fields not in Asset type
+                const { bulkItems, relatedRequestId, ...cleanData } = updatedAsset as any;
+                
+                await updateAsset(assetIdToUpdate, cleanData);
+                addNotification('Data aset berhasil diperbarui.', 'success');
+            } else {
+                // Create Logic (Bulk)
+                let successCount = 0;
+                // Generate base ID for the batch to ensure uniqueness but sequential
+                const baseTimestamp = Date.now();
+                
+                // Determine Category Prefix
+                const categoryPrefixMap: Record<string, string> = {
+                    'Perangkat Jaringan (Core)': 'NET',
+                    'Perangkat Pelanggan (CPE)': 'CPE',
+                    'Infrastruktur Fiber Optik': 'INF',
+                    'Alat Kerja Lapangan': 'TOL',
+                    'Aset Kantor': 'OFC'
+                };
+                const prefix = categoryPrefixMap[data.category] || 'AST';
+
+                // Find next sequence number for this prefix
+                const existingIds = assets.filter(a => a.id.startsWith(prefix));
+                let nextSeq = existingIds.length + 1;
+
+                for (const item of data.bulkItems) {
+                    const newAssetId = `${prefix}-${String(nextSeq++).padStart(4, '0')}`;
+                    
+                    const newAsset: Asset = {
+                        id: newAssetId,
+                        name: data.assetName,
+                        category: data.category,
+                        type: data.type,
+                        brand: data.brand,
+                        serialNumber: item.serialNumber || undefined,
+                        macAddress: item.macAddress || undefined,
+                        purchasePrice: data.purchasePrice,
+                        vendor: data.vendor,
+                        poNumber: data.poNumber,
+                        invoiceNumber: data.invoiceNumber,
+                        purchaseDate: data.purchaseDate,
+                        registrationDate: data.registrationDate,
+                        recordedBy: data.recordedBy,
+                        warrantyEndDate: data.warrantyEndDate,
+                        condition: data.condition,
+                        location: data.location,
+                        locationDetail: data.locationDetail,
+                        currentUser: data.currentUser,
+                        status: AssetStatus.IN_STORAGE, // Default for new registration
+                        notes: data.notes,
+                        attachments: data.attachments,
+                        activityLog: [
+                            {
+                                id: `log-${Date.now()}-${Math.random()}`,
+                                timestamp: new Date().toISOString(),
+                                user: currentUser.name,
+                                action: 'Aset Dicatat',
+                                details: 'Pencatatan awal aset baru.'
+                            }
+                        ],
+                        woRoIntNumber: data.relatedRequestId
+                    };
+                    
+                    await addAsset(newAsset);
+                    successCount++;
+                }
+
+                if (data.relatedRequestId && prefillData?.itemToRegister) {
+                    // Update partial registration status in Request
+                    const isFullyRegistered = await updateRequestRegistration(data.relatedRequestId, prefillData.itemToRegister.id, successCount);
+                    
+                    if (!isFullyRegistered) {
+                        setActivePage('request', { reopenStagingModalFor: data.relatedRequestId });
+                        addNotification(`${successCount} aset berhasil dicatat. Mengembalikan ke daftar request...`, 'success');
+                        // Return early to prevent setting view to 'list' immediately in this component scope,
+                        // setActivePage will handle the navigation and props update.
+                        return; 
+                    }
+                }
+
+                addNotification(`${successCount} aset berhasil dicatat.`, 'success');
+            }
+            
+            setView('list');
+            if (onClearPrefill) onClearPrefill();
+            if (onClearItemToEdit) onClearItemToEdit();
+            setEditingAsset(null);
+            setBulkItems([]);
+
+        } catch (error) {
+            console.error("Save error:", error);
+            addNotification('Gagal menyimpan data aset.', 'error');
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (confirm('Apakah Anda yakin ingin menghapus aset ini? Tindakan ini tidak dapat diurungkan.')) {
+            try {
+                await deleteAsset(id);
+                addNotification('Aset berhasil dihapus.', 'success');
+            } catch (error) {
+                addNotification('Gagal menghapus aset.', 'error');
+            }
+        }
+    };
+
     if (view === 'form') {
         return (
-             <div className="p-4 sm:p-6 md:p-8">
+            <div className="p-4 sm:p-6 md:p-8">
                 <div className="flex items-center justify-between mb-6">
-                    <h1 className="text-3xl font-bold text-tm-dark">{assetToEdit ? 'Edit Aset' : 'Catat Aset Baru'}</h1>
-                    <button onClick={() => { setView('list'); setAssetToEdit(null); if(prefillData) onClearPrefill(); }} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Kembali</button>
+                    <h1 className="text-3xl font-bold text-tm-dark">{editingAsset ? 'Edit Aset' : 'Registrasi Aset Baru'}</h1>
+                    <button onClick={() => { setView('list'); onClearPrefill(); onClearItemToEdit(); }} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Kembali ke Daftar</button>
                 </div>
                 <div className="p-4 sm:p-6 bg-white border border-gray-200/80 rounded-xl shadow-md pb-24">
-                    <RegistrationForm 
-                        onBack={() => { setView('list'); setAssetToEdit(null); }} 
-                        onSave={handleSave} 
+                    <RegistrationForm
+                        onBack={() => { setView('list'); onClearPrefill(); onClearItemToEdit(); }}
+                        onSave={handleSave}
                         prefillData={prefillData}
-                        editingAsset={assetToEdit}
+                        editingAsset={editingAsset}
                         currentUser={currentUser}
                         onStartScan={handleStartScan}
                         bulkItems={bulkItems}
                         setBulkItems={setBulkItems}
                         assetCategories={assetCategories}
+                        setActivePage={setActivePage}
                         openModelModal={openModelModal}
                         openTypeModal={openTypeModal}
-                        setActivePage={setActivePage}
                     />
                 </div>
                 
-                {/* Local Modals */}
+                {/* Modals for Management */}
                 {modelModalState.isOpen && modelModalState.category && modelModalState.type && (
                     <ModelManagementModal 
                         isOpen={modelModalState.isOpen}
@@ -823,19 +895,50 @@ const ItemRegistration: React.FC<ItemRegistrationProps> = (props) => {
 
     return (
         <div className="p-4 sm:p-6 md:p-8">
-            <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
-                <h1 className="text-3xl font-bold text-tm-dark">Daftar Aset</h1>
+            <div className="flex flex-col items-start justify-between gap-4 mb-6 md:flex-row md:items-center">
+                <h1 className="text-3xl font-bold text-tm-dark">Daftar Aset Terdaftar</h1>
                 <div className="flex items-center space-x-2">
-                    <button onClick={() => exportToCSV(assets, 'daftar_aset.csv')} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border rounded-lg shadow-sm hover:bg-gray-50"><ExportIcon className="w-4 h-4"/> Export CSV</button>
-                    <button onClick={() => setView('form')} className="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 rounded-lg shadow-sm bg-tm-primary hover:bg-tm-primary-hover">Catat Aset Baru</button>
+                    <button onClick={() => exportToCSV(sortedAssets, 'daftar_aset.csv')} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border rounded-lg shadow-sm hover:bg-gray-50">
+                        <ExportIcon className="w-4 h-4"/> Export CSV
+                    </button>
+                    <button onClick={() => setView('form')} className="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 rounded-lg shadow-sm bg-tm-primary hover:bg-tm-primary-hover">
+                        <RegisterIcon className="w-4 h-4 mr-2" />
+                        Catat Aset
+                    </button>
                 </div>
             </div>
-            <div className="p-4 mb-4 bg-white border border-gray-200/80 rounded-xl shadow-md"><div className="relative"><SearchIcon className="absolute w-5 h-5 text-gray-400 transform -translate-y-1/2 top-1/2 left-3" /><input type="text" placeholder="Cari aset..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-10 py-2 pl-10 pr-4 text-sm text-gray-900 bg-gray-50 border border-gray-300 rounded-lg focus:ring-tm-accent focus:border-tm-accent" /></div></div>
+
+            <div className="p-4 mb-4 bg-white border border-gray-200/80 rounded-xl shadow-md">
+                <div className="relative">
+                    <SearchIcon className="absolute w-5 h-5 text-gray-400 transform -translate-y-1/2 top-1/2 left-3" />
+                    <input type="text" placeholder="Cari nama, ID, SN, atau pengguna..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-10 py-2 pl-10 pr-10 text-sm text-gray-900 bg-gray-50 border border-gray-300 rounded-lg focus:ring-tm-accent focus:border-tm-accent" />
+                    {searchQuery && (
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                            <button type="button" onClick={() => setSearchQuery('')} className="p-1 text-gray-400 rounded-full hover:bg-gray-200 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-tm-accent">
+                                <CloseIcon className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
             <div className="overflow-hidden bg-white border border-gray-200/80 rounded-xl shadow-md">
                 <div className="overflow-x-auto custom-scrollbar">
-                    <RegistrationTable assets={paginatedAssets} onDetailClick={(asset) => onShowPreview({ type: 'asset', id: asset.id })} onDeleteClick={handleDelete} sortConfig={sortConfig} requestSort={requestSort} selectedAssetIds={selectedAssetIds} onSelectAll={(e) => setSelectedAssetIds(e.target.checked ? paginatedAssets.map(a => a.id) : [])} onSelectOne={(id) => setSelectedAssetIds(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id])} isBulkSelectMode={isBulkSelectMode} onEnterBulkMode={() => setIsBulkSelectMode(true)} onShowPreview={onShowPreview} />
+                    <RegistrationTable
+                        assets={paginatedAssets}
+                        onDetailClick={(asset) => onShowPreview({ type: 'asset', id: asset.id })}
+                        onDeleteClick={handleDelete}
+                        sortConfig={sortConfig}
+                        requestSort={requestSort}
+                        selectedAssetIds={selectedAssetIds}
+                        onSelectAll={(e) => e.target.checked ? setSelectedAssetIds(paginatedAssets.map(a => a.id)) : setSelectedAssetIds([])}
+                        onSelectOne={(id) => setSelectedAssetIds(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id])}
+                        isBulkSelectMode={isBulkSelectMode}
+                        onEnterBulkMode={() => setIsBulkSelectMode(true)}
+                        onShowPreview={onShowPreview}
+                    />
                 </div>
-                <PaginationControls currentPage={currentPage} totalPages={totalPages} totalItems={totalItems} itemsPerPage={itemsPerPage} onPageChange={setCurrentPage} onItemsPerPageChange={(n) => { setItemsPerPage(n); setCurrentPage(1); }} startIndex={startIndex} endIndex={endIndex} />
+                <PaginationControls currentPage={currentPage} totalPages={totalPages} totalItems={totalItems} itemsPerPage={itemsPerPage} onPageChange={setCurrentPage} onItemsPerPageChange={(size) => { setItemsPerPage(size); setCurrentPage(1); }} startIndex={startIndex} endIndex={endIndex} />
             </div>
         </div>
     );

@@ -364,6 +364,15 @@ const StatusAndActionSidebar: React.FC<RequestDetailPageProps & {
                 return commonActions.length > 0 ? <>{commonActions}</> : null;
 
             case ItemStatus.AWAITING_CEO_APPROVAL:
+                if (canApprovePurchase) {
+                     return (
+                         <div className="text-center p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                             <SpinnerIcon className="w-8 h-8 mx-auto mb-2 text-purple-600 animate-spin" />
+                             <p className="text-sm font-semibold text-purple-900">Menunggu Persetujuan CEO</p>
+                             <p className="text-xs text-purple-700 mt-1">Permintaan telah diajukan. Mohon menunggu keputusan final.</p>
+                         </div>
+                     );
+                }
                 if (canApproveFinal) {
                     return (
                         <div className="space-y-2">
