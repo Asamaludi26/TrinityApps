@@ -34,6 +34,7 @@ import { ReplyIcon } from '../../../components/icons/ReplyIcon';
 import { hasPermission } from '../../../utils/permissions';
 import { useRequestStore } from '../../../stores/useRequestStore';
 import { useNotification } from '../../../providers/NotificationProvider';
+import { BsClockHistory, BsHourglassSplit } from 'react-icons/bs';
 
 interface RequestDetailPageProps {
     request: Request;
@@ -64,7 +65,7 @@ interface RequestDetailPageProps {
 }
 
 // Helper: ActionButton Component for consistent UI
-const ActionButton: React.FC<{ onClick?: () => void, text: string, icon?: React.FC<{className?:string}>, color: 'primary'|'success'|'danger'|'info'|'secondary'|'special', disabled?: boolean }> = ({ onClick, text, icon: Icon, color, disabled }) => {
+const ActionButton: React.FC<{ onClick?: () => void, text: string, icon?: React.FC<{className?:string}>, color: 'primary'|'success'|'danger'|'info'|'secondary'|'special', disabled?: boolean, title?: string }> = ({ onClick, text, icon: Icon, color, disabled, title }) => {
     const colors = {
         primary: "bg-tm-primary hover:bg-tm-primary-hover text-white",
         success: "bg-success hover:bg-green-700 text-white",
@@ -78,6 +79,7 @@ const ActionButton: React.FC<{ onClick?: () => void, text: string, icon?: React.
             type="button"
             onClick={onClick}
             disabled={disabled}
+            title={title}
             className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg shadow-sm transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed ${colors[color]}`}
         >
             {disabled && <SpinnerIcon className="w-4 h-4" />}
@@ -87,10 +89,27 @@ const ActionButton: React.FC<{ onClick?: () => void, text: string, icon?: React.
     );
 };
 
+// Helper: Waiting State Card
+const WaitingStateCard: React.FC<{ title: string; message: string; icon?: React.FC<{className?:string}> }> = ({ title, message, icon: Icon = BsHourglassSplit }) => (
+    <div className="flex flex-col items-center justify-center p-6 text-center bg-gray-50 border border-gray-200 rounded-lg animate-fade-in-up">
+        <div className="relative mb-3">
+            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 z-10 relative">
+                <Icon className="w-6 h-6" />
+            </div>
+            <span className="absolute top-0 right-0 -mt-1 -mr-1 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+            </span>
+        </div>
+        <h4 className="font-bold text-gray-800">{title}</h4>
+        <p className="text-xs text-gray-500 mt-1 max-w-[200px] leading-relaxed">{message}</p>
+    </div>
+);
+
 // Check if user has permission to view price
 const canViewPrice = (user: User) => hasPermission(user, 'requests:approve:purchase');
 
-// --- Timeline Component ---
+// --- Timeline Component --- (unchanged)
 const TimelineStep: React.FC<{
     icon: React.FC<{ className?: string }>;
     title: string;
@@ -116,7 +135,7 @@ const TimelineStep: React.FC<{
     );
 };
 
-// --- Procurement Progress Card ---
+// --- Procurement Progress Card --- (unchanged)
 const ProcurementProgressCard: React.FC<{ request: Request, assets: Asset[] }> = ({ request, assets }) => {
     const registeredAssets = assets.filter(a => a.poNumber === request.id || a.woRoIntNumber === request.id);
     const lastRegistrationDate = registeredAssets.length > 0 && request.isRegistered
@@ -204,7 +223,7 @@ const ProcurementProgressCard: React.FC<{ request: Request, assets: Asset[] }> =
     );
 };
 
-// --- Approval Stamps Component ---
+// --- Approval Stamps Component --- (unchanged)
 const ApprovalProgress: React.FC<{ request: Request }> = ({ request }) => {
     if (request.status === ItemStatus.REJECTED && request.rejectedBy && request.rejectionDate) {
         return (
@@ -294,7 +313,7 @@ const ApprovalProgress: React.FC<{ request: Request }> = ({ request }) => {
     );
 };
 
-// --- Sidebar Component ---
+// --- Sidebar Component (Refactored for Context-Aware Behavior) ---
 const StatusAndActionSidebar: React.FC<RequestDetailPageProps & {
     isExpanded: boolean;
     onToggleVisibility: () => void;
@@ -328,144 +347,183 @@ const StatusAndActionSidebar: React.FC<RequestDetailPageProps & {
     const canManageAssets = hasPermission(currentUser, 'assets:create');
     const canManageHandover = hasPermission(currentUser, 'assets:handover');
 
-    const renderActions = () => {
-        const commonActions = [];
-        if (isRequester && [ItemStatus.PENDING, ItemStatus.LOGISTIC_APPROVED].includes(request.status)) {
-            commonActions.push(<ActionButton key="followup" onClick={() => onOpenFollowUpModal(request)} text="Follow Up" color="secondary" icon={BellIcon} />);
-        }
-
-        switch (request.status) {
-            case ItemStatus.PENDING:
-                if (isRequester) return <ActionButton onClick={onOpenCancellationModal} text="Batalkan Permintaan" color="danger" icon={CloseIcon} />;
-                if (canApproveLogistic || canApproveFinal) {
-                    return (
-                        <div className="space-y-2">
-                            <ActionButton onClick={() => onLogisticApproval(request.id)} disabled={isLoading} text="Setujui (Logistik)" color="success" icon={CheckIcon} />
-                            <ActionButton onClick={onOpenReviewModal} disabled={isLoading} text="Revisi / Tolak" color="secondary" icon={PencilIcon} />
-                        </div>
-                    );
-                }
-                break;
-            
-            case ItemStatus.LOGISTIC_APPROVED:
-                if (canApprovePurchase) {
-                    const actions = [
-                        <ActionButton key="submit" onClick={onFinalSubmit} disabled={isLoading || !isPurchaseFormValid} text="Submit ke CEO" color="primary" icon={CheckIcon} />,
-                        <ActionButton key="reject" onClick={onOpenReviewModal} disabled={isLoading} text="Revisi / Tolak" color="secondary" icon={PencilIcon} />
-                    ];
-                    if (!request.ceoFollowUpSent) {
-                        actions.push(<ActionButton key="followup-ceo" onClick={() => onFollowUpToCeo(request)} disabled={isLoading} text="Follow Up ke CEO" color="secondary" icon={BellIcon} />);
-                    }
-                    return <div className="space-y-2">{actions}</div>;
-                }
-                if (canApproveFinal && !request.isPrioritizedByCEO) {
-                    return <ActionButton onClick={() => onCeoDisposition(request.id)} disabled={isLoading} text="Prioritaskan (Disposisi)" color="special" icon={MegaphoneIcon} />;
-                }
-                return commonActions.length > 0 ? <>{commonActions}</> : null;
-
-            case ItemStatus.AWAITING_CEO_APPROVAL:
-                if (canApprovePurchase) {
-                     return (
-                         <div className="text-center p-4 bg-purple-50 border border-purple-200 rounded-lg">
-                             <SpinnerIcon className="w-8 h-8 mx-auto mb-2 text-purple-600 animate-spin" />
-                             <p className="text-sm font-semibold text-purple-900">Menunggu Persetujuan CEO</p>
-                             <p className="text-xs text-purple-700 mt-1">Permintaan telah diajukan. Mohon menunggu keputusan final.</p>
-                         </div>
-                     );
-                }
-                if (canApproveFinal) {
-                    return (
-                        <div className="space-y-2">
-                            <ActionButton onClick={() => onFinalCeoApproval(request.id)} disabled={isLoading} text="Beri Persetujuan Final" color="success" icon={CheckIcon} />
-                            <ActionButton onClick={onOpenReviewModal} disabled={isLoading} text="Revisi / Tolak" color="secondary" icon={PencilIcon} />
-                        </div>
-                    );
-                }
-                return null;
-            
-            case ItemStatus.APPROVED:
-                if (canApprovePurchase) {
-                    return <ActionButton onClick={onStartProcurement} disabled={isLoading} text="Mulai Proses Pengadaan" color="primary" icon={ShoppingCartIcon} />;
-                }
-                return null;
-
-            case ItemStatus.PURCHASING:
-                if (canApprovePurchase) {
-                     return <ActionButton onClick={() => onUpdateRequestStatus(ItemStatus.IN_DELIVERY)} disabled={isLoading} text="Tandai Sedang Dikirim" color="primary" icon={TruckIcon} />;
-                }
-                if (canApproveFinal && !request.progressUpdateRequest?.isAcknowledged) {
-                    return <ActionButton onClick={() => onRequestProgressUpdate(request.id)} disabled={isLoading} text="Minta Update Progres" color="info" icon={InfoIcon} />;
-                }
-                return null;
-
-            case ItemStatus.IN_DELIVERY:
-                 if (canApprovePurchase || canApproveLogistic) {
-                     return <ActionButton onClick={() => onUpdateRequestStatus(ItemStatus.ARRIVED)} disabled={isLoading} text="Tandai Barang Tiba" color="primary" icon={ArchiveBoxIcon} />;
-                }
-                if (canApproveFinal && !request.progressUpdateRequest?.isAcknowledged) {
-                    return <ActionButton onClick={() => onRequestProgressUpdate(request.id)} disabled={isLoading} text="Minta Update Progres" color="info" icon={InfoIcon} />;
-                }
-                return null;
-
-            case ItemStatus.ARRIVED:
-                 if (canManageAssets || canApproveFinal) {
-                     return <ActionButton onClick={() => onOpenStaging(request)} disabled={isLoading} text="Catat Sebagai Aset" color="primary" icon={RegisterIcon} />;
-                }
-                return null;
-            
-            case ItemStatus.AWAITING_HANDOVER:
-                 if (canManageHandover || canApproveFinal) {
-                     return <ActionButton onClick={() => onInitiateHandoverFromRequest(request)} disabled={isLoading} text="Buat Berita Acara Handover" color="primary" icon={HandoverIcon} />;
-                }
-                return null;
-            
-            case ItemStatus.COMPLETED:
-            case ItemStatus.REJECTED:
-            case ItemStatus.CANCELLED:
-                 return (
-                    <div className="text-center p-4 bg-gray-50/70 border border-gray-200/60 rounded-lg">
-                        <CheckIcon className="w-10 h-10 mx-auto mb-3 text-gray-400" />
-                        <p className="text-sm font-semibold text-gray-800">Proses Selesai</p>
-                        <p className="text-xs text-gray-500 mt-1">Tidak ada aksi lebih lanjut untuk permintaan ini.</p>
+    const renderContent = () => {
+        // --- 1. PENDING (Tahap Awal) ---
+        if (request.status === ItemStatus.PENDING) {
+            if (canApproveLogistic || canApproveFinal) {
+                // Actor: Admin Logistik / Super Admin
+                return (
+                    <div className="space-y-3">
+                        <ActionButton onClick={() => onLogisticApproval(request.id)} disabled={isLoading} text="Setujui (Logistik)" color="success" icon={CheckIcon} />
+                        <ActionButton onClick={onOpenReviewModal} disabled={isLoading} text="Revisi / Tolak" color="secondary" icon={PencilIcon} />
                     </div>
                 );
-
-            default:
-                return null;
+            } else if (isRequester) {
+                // Actor: Requester
+                return (
+                    <div className="space-y-3">
+                         <ActionButton onClick={() => onOpenFollowUpModal(request)} text="Follow Up ke Admin" color="info" icon={BellIcon} />
+                         <ActionButton onClick={onOpenCancellationModal} text="Batalkan Permintaan" color="danger" icon={CloseIcon} />
+                    </div>
+                );
+            } else {
+                 return <WaitingStateCard title="Menunggu Persetujuan Logistik" message="Permintaan sedang ditinjau oleh Admin Logistik." />;
+            }
         }
+
+        // --- 2. LOGISTIC APPROVED (Tahap Purchase) ---
+        if (request.status === ItemStatus.LOGISTIC_APPROVED) {
+            if (canApprovePurchase) {
+                // Actor: Admin Purchase
+                return (
+                    <div className="space-y-3">
+                        <ActionButton 
+                            onClick={onFinalSubmit} 
+                            disabled={isLoading || !isPurchaseFormValid} 
+                            text="Submit ke CEO" 
+                            color="primary" 
+                            icon={CheckIcon} 
+                            title={!isPurchaseFormValid ? "Harap lengkapi detail pembelian terlebih dahulu" : ""}
+                        />
+                        <ActionButton onClick={onOpenReviewModal} disabled={isLoading} text="Revisi / Tolak" color="secondary" icon={PencilIcon} />
+                        {!request.ceoFollowUpSent && (
+                            <ActionButton onClick={() => onFollowUpToCeo(request)} disabled={isLoading} text="Follow Up ke CEO" color="secondary" icon={BellIcon} />
+                        )}
+                    </div>
+                );
+            } else if (canApproveFinal && !request.isPrioritizedByCEO) {
+                 // Actor: Super Admin (Can prioritize)
+                 return (
+                    <div className="space-y-3">
+                        <ActionButton onClick={() => onCeoDisposition(request.id)} disabled={isLoading} text="Prioritaskan (Disposisi)" color="special" icon={MegaphoneIcon} />
+                        <div className="pt-2 border-t border-gray-100">
+                             <WaitingStateCard title="Menunggu Detail Pembelian" message="Admin Purchase sedang melengkapi detail estimasi harga." />
+                        </div>
+                    </div>
+                 );
+            } else {
+                return <WaitingStateCard title="Dalam Proses Purchase" message="Admin Purchase sedang melakukan estimasi dan persiapan data untuk persetujuan final." />;
+            }
+        }
+
+        // --- 3. AWAITING CEO APPROVAL (Tahap Final) ---
+        if (request.status === ItemStatus.AWAITING_CEO_APPROVAL) {
+            if (canApproveFinal) {
+                // Actor: Super Admin / CEO
+                 return (
+                    <div className="space-y-3">
+                        <ActionButton onClick={() => onFinalCeoApproval(request.id)} disabled={isLoading} text="Berikan Persetujuan Final" color="success" icon={CheckIcon} />
+                        <ActionButton onClick={onOpenReviewModal} disabled={isLoading} text="Tolak / Revisi" color="danger" icon={CloseIcon} />
+                    </div>
+                );
+            } else {
+                // Actor: Admin Purchase / Requester / Others
+                return <WaitingStateCard title="Menunggu Persetujuan CEO" message="Permintaan telah diajukan dan sedang menunggu keputusan final dari Pimpinan." />;
+            }
+        }
+
+        // --- 4. APPROVED (Siap Pengadaan) ---
+        if (request.status === ItemStatus.APPROVED) {
+            if (canApprovePurchase) {
+                 // Actor: Admin Purchase
+                 return <ActionButton onClick={onStartProcurement} disabled={isLoading} text="Mulai Proses Pengadaan" color="primary" icon={ShoppingCartIcon} />;
+            } else {
+                 return <WaitingStateCard title="Siap Pengadaan" message="Permintaan disetujui. Tim Purchase akan segera memulai proses pembelian." />;
+            }
+        }
+
+        // --- 5. PURCHASING / IN DELIVERY ---
+        if (request.status === ItemStatus.PURCHASING) {
+            if (canApprovePurchase) {
+                 return <ActionButton onClick={() => onUpdateRequestStatus(ItemStatus.IN_DELIVERY)} disabled={isLoading} text="Tandai Sedang Dikirim" color="primary" icon={TruckIcon} />;
+            } else if (canApproveFinal && !request.progressUpdateRequest?.isAcknowledged) {
+                 return <ActionButton onClick={() => onRequestProgressUpdate(request.id)} disabled={isLoading} text="Minta Update Progres" color="info" icon={InfoIcon} />;
+            } else {
+                 return <WaitingStateCard title="Sedang Dipesan" message="Barang sedang dalam proses pembelian oleh tim Purchase." icon={ShoppingCartIcon} />;
+            }
+        }
+        
+        if (request.status === ItemStatus.IN_DELIVERY) {
+             if (canApprovePurchase || canApproveLogistic) {
+                  return <ActionButton onClick={() => onUpdateRequestStatus(ItemStatus.ARRIVED)} disabled={isLoading} text="Tandai Barang Tiba" color="primary" icon={ArchiveBoxIcon} />;
+             } else {
+                  return <WaitingStateCard title="Dalam Pengiriman" message="Barang sedang dalam perjalanan menuju kantor." icon={TruckIcon} />;
+             }
+        }
+
+        // --- 6. ARRIVED (Siap Registrasi) ---
+        if (request.status === ItemStatus.ARRIVED) {
+            if (canManageAssets || canApproveFinal) {
+                // Actor: Admin Logistik
+                return <ActionButton onClick={() => onOpenStaging(request)} disabled={isLoading} text="Catat Sebagai Aset" color="primary" icon={RegisterIcon} />;
+            } else {
+                 return <WaitingStateCard title="Barang Tiba" message="Admin Logistik sedang memproses pencatatan aset ke dalam sistem." icon={ArchiveBoxIcon} />;
+            }
+        }
+
+        // --- 7. AWAITING HANDOVER ---
+        if (request.status === ItemStatus.AWAITING_HANDOVER) {
+             if (canManageHandover || canApproveFinal) {
+                 return <ActionButton onClick={() => onInitiateHandoverFromRequest(request)} disabled={isLoading} text="Buat Berita Acara Handover" color="primary" icon={HandoverIcon} />;
+             } else {
+                 return <WaitingStateCard title="Siap Serah Terima" message="Aset sudah teregistrasi dan siap diserahterimakan oleh Logistik." icon={CheckIcon} />;
+             }
+        }
+
+        // --- 8. TERMINAL STATES ---
+        if ([ItemStatus.COMPLETED, ItemStatus.REJECTED, ItemStatus.CANCELLED].includes(request.status)) {
+            return (
+                <div className="text-center p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    {request.status === ItemStatus.REJECTED ? (
+                        <CloseIcon className="w-10 h-10 mx-auto mb-2 text-red-500" />
+                    ) : request.status === ItemStatus.CANCELLED ? (
+                        <CloseIcon className="w-10 h-10 mx-auto mb-2 text-gray-400" />
+                    ) : (
+                        <CheckIcon className="w-10 h-10 mx-auto mb-2 text-green-500" />
+                    )}
+                    <p className="text-sm font-semibold text-gray-800">
+                        {request.status === ItemStatus.COMPLETED ? 'Permintaan Selesai' : 
+                         request.status === ItemStatus.REJECTED ? 'Permintaan Ditolak' : 'Permintaan Dibatalkan'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Tidak ada aksi lebih lanjut untuk permintaan ini.</p>
+                </div>
+            );
+        }
+
+        return null;
     };
     
     return (
-        <>
-            <div className="p-5 bg-white border border-gray-200/80 rounded-xl shadow-sm">
-                <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                            <InfoIcon className="w-5 h-5 text-gray-400" />
-                            <h3 className="text-base font-semibold text-gray-800">Status & Aksi</h3>
-                        </div>
-                        <div className="mt-2">
-                            <RequestStatusIndicator status={request.status} />
-                        </div>
+        <div className="p-5 bg-white border border-gray-200/80 rounded-xl shadow-sm">
+            <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                        <InfoIcon className="w-5 h-5 text-gray-400" />
+                        <h3 className="text-base font-semibold text-gray-800">Status & Aksi</h3>
                     </div>
-                    <button
-                        onClick={onToggleVisibility}
-                        className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-gray-400 rounded-full hover:bg-gray-100 hover:text-gray-800">
-                        <ChevronsLeftIcon className="w-5 h-5" />
-                    </button>
+                    <div className="mt-2">
+                        <RequestStatusIndicator status={request.status} />
+                    </div>
                 </div>
-                
-                <div className="mt-4 pt-4 border-t space-y-3">
-                    {renderActions()}
-                </div>
+                <button
+                    onClick={onToggleVisibility}
+                    className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-gray-400 rounded-full hover:bg-gray-100 hover:text-gray-800">
+                    <ChevronsLeftIcon className="w-5 h-5" />
+                </button>
             </div>
-        </>
+            
+            <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
+                {renderContent()}
+            </div>
+        </div>
     );
 };
 
 const PreviewItem: React.FC<{ label: string; value?: React.ReactNode; children?: React.ReactNode; fullWidth?: boolean; }> = ({ label, value, children, fullWidth = false }) => (
     <div className={fullWidth ? 'sm:col-span-full' : ''}><dt className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</dt><dd className="mt-1 text-gray-800">{value || children || '-'}</dd></div>
 );
+
+// ... (Rest of the file remains unchanged: ItemPurchaseDetailsForm, PurchaseDetailsView, CommentThread, NewRequestDetailPage main component)
 
 interface ItemPurchaseDetailsFormProps {
     item: RequestItem;
@@ -674,7 +732,7 @@ const PurchaseDetailsView: React.FC<{ request: Request, details: Record<number, 
     </section>
 );
 
-// --- Comment Thread Component ---
+// --- Comment Thread Component --- (unchanged)
 const CommentThread: React.FC<{
     activities: Activity[];
     allActivities: Activity[];
@@ -873,7 +931,7 @@ const CommentThread: React.FC<{
     );
 };
 
-// --- Main Page Component ---
+// --- Main Page Component --- (unchanged)
 const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
     const { request: initialRequest, currentUser, assets, onBackToList, onShowPreview, users, onSubmitForCeoApproval, assetCategories, onUpdateRequestStatus, onOpenReviewModal, isLoading } = props;
     const [isActionSidebarExpanded, setIsActionSidebarExpanded] = useState(true);
