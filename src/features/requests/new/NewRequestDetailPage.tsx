@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Request, ItemStatus, RequestItem, User, AssetStatus, Asset, PreviewData, AssetCategory, PurchaseDetails, Activity, Division } from '../../../types';
 import { DetailPageLayout } from '../../../components/layout/DetailPageLayout';
@@ -151,11 +150,18 @@ const ProcurementProgressCard: React.FC<{ request: Request, assets: Asset[] }> =
         if (request.status === ItemStatus.COMPLETED) {
             return 'completed';
         }
-
+        
+        // Handle IN_PROGRESS as equivalent to PURCHASING for visualization if needed, 
+        // or just ensure logic handles it. Assuming standard flow here.
+        
         const requestIndex = order.indexOf(request.status);
         const stepIndex = order.indexOf(stepStatus);
 
-        if (requestIndex === -1) return 'upcoming';
+        if (requestIndex === -1) {
+            // Fallback for IN_PROGRESS mapping to PURCHASING visually
+            if (request.status === ItemStatus.IN_PROGRESS && stepStatus === ItemStatus.PURCHASING) return 'current';
+            return 'upcoming';
+        }
 
         if (stepIndex < requestIndex) return 'completed';
         if (stepIndex === requestIndex) return 'current';
@@ -163,7 +169,7 @@ const ProcurementProgressCard: React.FC<{ request: Request, assets: Asset[] }> =
         return 'upcoming';
     };
     
-    const isStarted = order.includes(request.status) || request.status === ItemStatus.COMPLETED;
+    const isStarted = order.includes(request.status) || request.status === ItemStatus.COMPLETED || request.status === ItemStatus.IN_PROGRESS;
     
     const steps = [
         { status: ItemStatus.APPROVED, label: 'Disetujui', icon: CheckIcon, date: request.finalApprovalDate },
@@ -432,8 +438,8 @@ const StatusAndActionSidebar: React.FC<RequestDetailPageProps & {
             }
         }
 
-        // --- 5. PURCHASING / IN DELIVERY ---
-        if (request.status === ItemStatus.PURCHASING) {
+        // --- 5. PURCHASING / IN DELIVERY / IN_PROGRESS ---
+        if (request.status === ItemStatus.PURCHASING || request.status === ItemStatus.IN_PROGRESS) {
             if (canApprovePurchase) {
                  return <ActionButton onClick={() => onUpdateRequestStatus(ItemStatus.IN_DELIVERY)} disabled={isLoading} text="Tandai Sedang Dikirim" color="primary" icon={TruckIcon} />;
             } else if (canApproveFinal && !request.progressUpdateRequest?.isAcknowledged) {
