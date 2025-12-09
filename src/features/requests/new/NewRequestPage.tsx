@@ -43,7 +43,6 @@ import { ExclamationTriangleIcon } from "../../../components/icons/ExclamationTr
 import { Tooltip } from "../../../components/ui/Tooltip";
 import { CustomSelect } from "../../../components/ui/CustomSelect";
 import { FilterIcon } from "../../../components/icons/FilterIcon";
-import { RequestIcon } from "../../../components/icons/RequestIcon";
 import { CheckIcon } from "../../../components/icons/CheckIcon";
 import { BellIcon } from "../../../components/icons/BellIcon";
 import { MegaphoneIcon } from "../../../components/icons/MegaphoneIcon";
@@ -66,7 +65,6 @@ import { TypeManagementModal } from "../../../components/ui/TypeManagementModal"
 import { useRequestStore } from "../../../stores/useRequestStore";
 import { useAssetStore } from "../../../stores/useAssetStore";
 import { useMasterDataStore } from "../../../stores/useMasterDataStore";
-import { useAuthStore } from "../../../stores/useAuthStore";
 import { useNotificationStore } from "../../../stores/useNotificationStore";
 import { useUIStore } from "../../../stores/useUIStore";
 
@@ -473,7 +471,6 @@ const RequestForm: React.FC<{
   openTypeModal,
   setActivePage,
 }) => {
-  // ... (RequestForm logic copied for completeness, uses local props correctly)
   const [requestDate, setRequestDate] = useState<Date | null>(new Date());
   const [requesterName, setRequesterName] = useState(currentUser.name);
   const [requesterDivision, setRequesterDivision] = useState("");
@@ -2014,6 +2011,7 @@ const NewRequestPage: React.FC<NewRequestPageProps> = (props) => {
         } else if (selectedRequest.status === ItemStatus.LOGISTIC_APPROVED) {
           // Stay LOGISTIC_APPROVED, Purchase details still need filling
           nextStatus = ItemStatus.LOGISTIC_APPROVED;
+          // No approvalUpdates needed here, as we are not changing the approver.
         } else if (
           selectedRequest.status === ItemStatus.AWAITING_CEO_APPROVAL
         ) {
@@ -2978,7 +2976,6 @@ const NewRequestPage: React.FC<NewRequestPageProps> = (props) => {
         </Modal>
       )}
 
-      {/* Complex Review Modal */}
       {isReviewModalOpen && selectedRequest && (
         <RequestReviewModal
           isOpen={isReviewModalOpen}

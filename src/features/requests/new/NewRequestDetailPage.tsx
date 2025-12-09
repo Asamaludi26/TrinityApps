@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Request, ItemStatus, RequestItem, User, Asset, Division, PreviewData, AssetCategory, PurchaseDetails, Activity } from '../../../types';
+import { Request, ItemStatus, RequestItem, User, AssetStatus, Asset, PreviewData, AssetCategory, PurchaseDetails, Activity, Division } from '../../../types';
 import { DetailPageLayout } from '../../../components/layout/DetailPageLayout';
 import { Letterhead } from '../../../components/ui/Letterhead';
 import { MegaphoneIcon } from '../../../components/icons/MegaphoneIcon';
@@ -44,7 +44,7 @@ interface RequestDetailPageProps {
     onBackToList: () => void;
     onShowPreview: (data: any) => void;
     
-    // Action handlers
+    // Action handlers passed from Parent (Page)
     onOpenReviewModal: () => void;
     onOpenCancellationModal: () => void;
     onOpenFollowUpModal: (req: Request) => void;
@@ -63,7 +63,7 @@ interface RequestDetailPageProps {
     assetCategories: AssetCategory[];
 }
 
-// Helper: ActionButton
+// Helper: ActionButton Component for consistent UI
 const ActionButton: React.FC<{ onClick?: () => void, text: string, icon?: React.FC<{className?:string}>, color: 'primary'|'success'|'danger'|'info'|'secondary'|'special', disabled?: boolean }> = ({ onClick, text, icon: Icon, color, disabled }) => {
     const colors = {
         primary: "bg-tm-primary hover:bg-tm-primary-hover text-white",
@@ -87,8 +87,10 @@ const ActionButton: React.FC<{ onClick?: () => void, text: string, icon?: React.
     );
 };
 
+// Check if user has permission to view price
 const canViewPrice = (user: User) => hasPermission(user, 'requests:approve:purchase');
 
+// --- Timeline Component ---
 const TimelineStep: React.FC<{
     icon: React.FC<{ className?: string }>;
     title: string;
@@ -114,6 +116,7 @@ const TimelineStep: React.FC<{
     );
 };
 
+// --- Procurement Progress Card ---
 const ProcurementProgressCard: React.FC<{ request: Request, assets: Asset[] }> = ({ request, assets }) => {
     const registeredAssets = assets.filter(a => a.poNumber === request.id || a.woRoIntNumber === request.id);
     const lastRegistrationDate = registeredAssets.length > 0 && request.isRegistered
@@ -201,6 +204,7 @@ const ProcurementProgressCard: React.FC<{ request: Request, assets: Asset[] }> =
     );
 };
 
+// --- Approval Stamps Component ---
 const ApprovalProgress: React.FC<{ request: Request }> = ({ request }) => {
     if (request.status === ItemStatus.REJECTED && request.rejectedBy && request.rejectionDate) {
         return (
@@ -290,6 +294,7 @@ const ApprovalProgress: React.FC<{ request: Request }> = ({ request }) => {
     );
 };
 
+// --- Sidebar Component ---
 const StatusAndActionSidebar: React.FC<RequestDetailPageProps & {
     isExpanded: boolean;
     onToggleVisibility: () => void;
@@ -317,7 +322,6 @@ const StatusAndActionSidebar: React.FC<RequestDetailPageProps & {
     }
 
     const isRequester = currentUser.name === request.requester;
-    // Check permissions for actions instead of raw roles
     const canApproveLogistic = hasPermission(currentUser, 'requests:approve:logistic');
     const canApprovePurchase = hasPermission(currentUser, 'requests:approve:purchase');
     const canApproveFinal = hasPermission(currentUser, 'requests:approve:final');
@@ -563,8 +567,7 @@ const ItemPurchaseDetailsForm: React.FC<ItemPurchaseDetailsFormProps> = ({ item,
                             </div>
                         </div>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-1">
-
-                        <div>
+                            <div>
                                 <label className="font-medium text-gray-700">Masa Garansi (bulan)</label>
                                 <input
                                     type="number"
@@ -574,7 +577,6 @@ const ItemPurchaseDetailsForm: React.FC<ItemPurchaseDetailsFormProps> = ({ item,
                                     className="block w-full px-3 py-2 mt-1 text-gray-900 bg-gray-50 border border-gray-300 rounded-lg shadow-sm"
                                 />
                             </div>
-
                         </div>
 
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
@@ -637,7 +639,6 @@ const PurchaseDetailsView: React.FC<{ request: Request, details: Record<number, 
                              return (
                                 <tr key={item.id} className="bg-white">
                                     <td className="p-3 font-semibold text-gray-800">{item.itemName || 'N/A'}</td>
-                                    {/* Conditionally render Price cell */}
                                     {canViewPrice(currentUser) && (
                                         <td className="p-3 text-right font-mono text-gray-800">Rp {(itemDetails.purchasePrice as unknown as number).toLocaleString('id-ID')}</td>
                                     )}
@@ -664,6 +665,7 @@ const PurchaseDetailsView: React.FC<{ request: Request, details: Record<number, 
     </section>
 );
 
+// --- Comment Thread Component ---
 const CommentThread: React.FC<{
     activities: Activity[];
     allActivities: Activity[];
@@ -862,33 +864,31 @@ const CommentThread: React.FC<{
     );
 };
 
-
+// --- Main Page Component ---
 const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
-    const { request: initialRequest, currentUser, assets, onBackToList, onShowPreview, users, onSubmitForCeoApproval, assetCategories, isLoading, onOpenReviewModal } = props;
+    const { request: initialRequest, currentUser, assets, onBackToList, onShowPreview, users, onSubmitForCeoApproval, assetCategories, onUpdateRequestStatus, onOpenReviewModal, isLoading } = props;
     const [isActionSidebarExpanded, setIsActionSidebarExpanded] = useState(true);
     const [itemPurchaseDetails, setItemPurchaseDetails] = useState<Record<number, Omit<PurchaseDetails, 'filledBy' | 'fillDate'>>>({});
     const [isDownloading, setIsDownloading] = useState(false);
     const printRef = useRef<HTMLDivElement>(null);
     const addNotification = useNotification();
     
+    // Store Integration for Live Updates
+    const storeRequests = useRequestStore((state) => state.requests);
+    const updateRequest = useRequestStore((state) => state.updateRequest);
+    
+    // Use memo to get the freshest data from store, fallback to prop if not found
+    const request = useMemo(
+        () => storeRequests.find(r => r.id === initialRequest.id) || initialRequest,
+        [storeRequests, initialRequest.id]
+    );
+
     const [newComment, setNewComment] = useState('');
     const [editingActivityId, setEditingActivityId] = useState<number | null>(null);
     const [editText, setEditText] = useState('');
     const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
     const [replyingTo, setReplyingTo] = useState<Activity | null>(null);
     const commentInputRef = useRef<HTMLTextAreaElement>(null);
-
-    const storeRequests = useRequestStore((state) => state.requests);
-    const updateRequest = useRequestStore((state) => state.updateRequest);
-    
-    const request = useMemo(
-        () => storeRequests.find(r => r.id === initialRequest.id) || initialRequest,
-        [storeRequests, initialRequest.id]
-    );
-
-    const onUpdateRequest = async (partialUpdate: Partial<Request>) => {
-        await updateRequest(request.id, partialUpdate);
-    };
 
     const adjustTextareaHeight = () => {
         if (commentInputRef.current) {
@@ -907,7 +907,7 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
         }
     }, [replyingTo]);
     
-    const handleAddComment = () => {
+    const handleAddComment = async () => {
         if (newComment.trim() === '') return;
         const newActivity: Activity = {
             id: Date.now(),
@@ -918,7 +918,8 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
             payload: { text: newComment.trim() }
         };
         const updatedActivityLog = [newActivity, ...(request.activityLog || [])];
-        onUpdateRequest({ activityLog: updatedActivityLog });
+        
+        await updateRequest(request.id, { activityLog: updatedActivityLog });
         setNewComment('');
         setReplyingTo(null);
     };
@@ -943,22 +944,22 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
         setEditText('');
     };
 
-    const handleSaveEdit = () => {
+    const handleSaveEdit = async () => {
         if (!editingActivityId || editText.trim() === '') return;
         
         const updatedLog = (request.activityLog || []).map(act => 
             act.id === editingActivityId ? { ...act, payload: { ...act.payload, text: editText.trim() } } : act
         );
-        onUpdateRequest({ activityLog: updatedLog });
+        await updateRequest(request.id, { activityLog: updatedLog });
 
         addNotification('Komentar berhasil diperbarui.', 'success');
         handleCancelEdit();
     };
     
-    const handleDelete = () => {
+    const handleDelete = async () => {
         if (!activityToDelete) return;
         const updatedLog = (request.activityLog || []).filter(act => act.id !== activityToDelete.id);
-        onUpdateRequest({ activityLog: updatedLog });
+        await updateRequest(request.id, { activityLog: updatedLog });
         addNotification('Komentar berhasil dihapus.', 'success');
         setActivityToDelete(null);
     };
@@ -981,6 +982,7 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
             return;
         }
 
+        // Inline tailwind config for print window
         const tailwindConfigObject = {
             theme: {
                 extend: {
@@ -1142,298 +1144,293 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
     const isCommentDisabled = [ItemStatus.COMPLETED, ItemStatus.REJECTED, ItemStatus.CANCELLED].includes(request.status);
 
     return (
-        <>
-            <DetailPageLayout
-                title={`Detail Request: ${initialRequest.id}`}
-                onBack={onBackToList}
-                headerActions={
-                    <div className="flex items-center gap-2 no-print">
-                        <button onClick={handlePrint} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border rounded-lg shadow-sm hover:bg-gray-50">
-                            <PrintIcon className="w-4 h-4"/> Cetak
-                        </button>
-                        <button onClick={handleDownloadPdf} disabled={isDownloading} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-tm-primary rounded-lg shadow-sm hover:bg-tm-primary-hover disabled:bg-tm-primary/70">
-                            {isDownloading ? <SpinnerIcon className="w-4 h-4"/> : <DownloadIcon className="w-4 h-4" />}
-                            {isDownloading ? 'Mengunduh...' : 'Unduh PDF'}
-                        </button>
-                    </div>
-                }
-                mainColClassName={isActionSidebarExpanded ? 'lg:col-span-8' : 'lg:col-span-11'}
-                asideColClassName={isActionSidebarExpanded ? 'lg:col-span-4' : 'lg:col-span-1'}
-                aside={
-                    <StatusAndActionSidebar 
-                        {...props} 
-                        request={request} // Pass the live request
-                        isExpanded={isActionSidebarExpanded} 
-                        onToggleVisibility={() => setIsActionSidebarExpanded(prev => !prev)}
-                        onFinalSubmit={handleFinalSubmitForApproval}
-                        isPurchaseFormValid={isPurchaseFormValid}
-                        onOpenReviewModal={onOpenReviewModal}
-                    />
-                }
-            >
-                <div className="space-y-8">
-                    <div ref={printRef} className="p-6 bg-white border border-gray-200/80 rounded-xl shadow-sm space-y-8">
-                        <Letterhead />
+        <DetailPageLayout
+            title={`Detail Request: ${request.id}`}
+            onBack={onBackToList}
+            headerActions={
+                 <div className="flex items-center gap-2 no-print">
+                    <button onClick={handlePrint} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border rounded-lg shadow-sm hover:bg-gray-50">
+                        <PrintIcon className="w-4 h-4"/> Cetak
+                    </button>
+                    <button onClick={handleDownloadPdf} disabled={isDownloading} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-tm-primary rounded-lg shadow-sm hover:bg-tm-primary-hover disabled:bg-tm-primary/70">
+                        {isDownloading ? <SpinnerIcon className="w-4 h-4"/> : <DownloadIcon className="w-4 h-4" />}
+                        {isDownloading ? 'Mengunduh...' : 'Unduh PDF'}
+                    </button>
+                </div>
+            }
+            mainColClassName={isActionSidebarExpanded ? 'lg:col-span-8' : 'lg:col-span-11'}
+            asideColClassName={isActionSidebarExpanded ? 'lg:col-span-4' : 'lg:col-span-1'}
+            aside={
+                <StatusAndActionSidebar 
+                    {...props} 
+                    request={request} // Pass the live request object
+                    isExpanded={isActionSidebarExpanded} 
+                    onToggleVisibility={() => setIsActionSidebarExpanded(prev => !prev)}
+                    onFinalSubmit={handleFinalSubmitForApproval}
+                    isPurchaseFormValid={isPurchaseFormValid}
+                />
+            }
+        >
+            <div className="space-y-8">
+                <div ref={printRef} className="p-6 bg-white border border-gray-200/80 rounded-xl shadow-sm space-y-8">
+                    <Letterhead />
 
-                        {request.isPrioritizedByCEO && (
-                            <div className="p-3 flex items-start gap-3 text-sm bg-purple-50 border border-purple-200 rounded-md text-purple-800">
-                                <MegaphoneIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                                <p>
-                                    <strong>Perhatian:</strong> Permintaan ini telah diprioritaskan oleh CEO pada <strong>{new Date(request.ceoDispositionDate!).toLocaleString('id-ID')}</strong> untuk segera diproses.
+                    {request.isPrioritizedByCEO && (
+                        <div className="p-3 flex items-start gap-3 text-sm bg-purple-50 border border-purple-200 rounded-md text-purple-800">
+                            <MegaphoneIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                            <p>
+                                <strong>Perhatian:</strong> Permintaan ini telah diprioritaskan oleh CEO pada <strong>{new Date(request.ceoDispositionDate!).toLocaleString('id-ID')}</strong> untuk segera diproses.
+                            </p>
+                        </div>
+                    )}
+                    
+                    {request.progressUpdateRequest && !request.progressUpdateRequest.isAcknowledged && currentUser.role === 'Admin Purchase' && (
+                        <div className="p-4 flex items-start gap-4 text-sm bg-blue-50 border border-blue-200 rounded-md text-blue-800 no-print">
+                            <InfoIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                            <div>
+                                <p className="font-semibold">Perhatian: Update Progres Diminta</p>
+                                <p className="mt-1">
+                                    <span className="font-semibold">{request.progressUpdateRequest.requestedBy}</span> meminta update progres untuk permintaan ini pada {new Date(request.progressUpdateRequest.requestDate).toLocaleString('id-ID')}.
                                 </p>
+                                <button
+                                    onClick={props.onAcknowledgeProgressUpdate}
+                                    disabled={props.isLoading}
+                                    className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white bg-tm-primary rounded-lg shadow-sm hover:bg-tm-primary-hover"
+                                >
+                                    {props.isLoading ? <SpinnerIcon /> : <CheckIcon />}
+                                    Tandai Sudah Dilihat
+                                </button>
                             </div>
-                        )}
-                        
-                        {request.progressUpdateRequest && !request.progressUpdateRequest.isAcknowledged && currentUser.role === 'Admin Purchase' && (
-                            <div className="p-4 flex items-start gap-4 text-sm bg-blue-50 border border-blue-200 rounded-md text-blue-800 no-print">
-                                <InfoIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                                <div>
-                                    <p className="font-semibold">Perhatian: Update Progres Diminta</p>
-                                    <p className="mt-1">
-                                        <span className="font-semibold">{request.progressUpdateRequest.requestedBy}</span> meminta update progres untuk permintaan ini pada {new Date(request.progressUpdateRequest.requestDate).toLocaleString('id-ID')}.
-                                    </p>
-                                    <button
-                                        onClick={props.onAcknowledgeProgressUpdate}
-                                        disabled={props.isLoading}
-                                        className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white bg-tm-primary rounded-lg shadow-sm hover:bg-tm-primary-hover"
-                                    >
-                                        {props.isLoading ? <SpinnerIcon /> : <CheckIcon />}
-                                        Tandai Sudah Dilihat
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="text-center">
-                            <h3 className="text-xl font-bold uppercase text-tm-dark">Surat Permintaan Pembelian Barang</h3>
-                            <p className="text-sm text-tm-secondary">Nomor Dokumen: {request.docNumber || request.id}</p>
                         </div>
-                        
-                        <section>
-                            <h4 className="font-semibold text-gray-800 border-b pb-1 mb-2">Detail Dokumen</h4>
-                            <dl className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3 text-sm">
-                                <PreviewItem label="Nomor Request" value={request.id} />
-                                <PreviewItem label="Nomor Dokumen" value={request.docNumber || '-'} />
-                                <PreviewItem label="Tanggal Request" value={new Date(request.requestDate).toLocaleString('id-ID')} />
-                                <PreviewItem label="Pemohon" value={request.requester} />
-                                <PreviewItem label="Divisi" value={request.division} />
-                                <PreviewItem label="Tipe Order">
-                                    <OrderIndicator order={request.order} />
-                                </PreviewItem>
-                                <PreviewItem label="Status Saat Ini">
-                                    <RequestStatusIndicator status={request.status} />
-                                </PreviewItem>
-                                {request.order.type === 'Project Based' && (
-                                    <PreviewItem label="Nama Proyek" value={request.order.project} />
-                                )}
-                            </dl>
-                            {request.order.type === 'Urgent' && (
-                                <div className="mt-4">
-                                    <PreviewItem label="Justifikasi Urgent" fullWidth>
-                                        <p className="p-3 text-sm bg-amber-50 border border-amber-200 rounded-md italic">
-                                            "{request.order.justification}"
-                                        </p>
-                                    </PreviewItem>
-                                </div>
-                            )}
-                        </section>
-                        
-                        <section>
-                            <h4 className="font-semibold text-gray-800 border-b pb-1 mb-2">Rincian Barang yang Diminta</h4>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-gray-100 text-xs uppercase text-gray-700">
-                                        <tr>
-                                            <th className="p-3 w-10">No.</th>
-                                            <th className="p-3">Nama Barang</th>
-                                            <th className="p-3">Tipe/Brand</th>
-                                            <th className="p-3 text-center w-40">Jumlah</th>
-                                            <th className="p-3">Keterangan</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {request.items.map((item, index) => {
-                                            const itemStatus = request.itemStatuses?.[item.id];
-                                            const approvedQuantity = itemStatus?.approvedQuantity ?? item.quantity;
-                                            const isAdjusted = typeof approvedQuantity === 'number';
+                    )}
 
-                                            const isPartiallyApproved = isAdjusted && approvedQuantity > 0 && approvedQuantity < item.quantity;
-                                            const isRejected = isAdjusted && approvedQuantity === 0;
-                                            
-                                            let rowClass = 'border-b';
-                                            if (isRejected) rowClass += ' bg-red-50/60';
-                                            else if (isPartiallyApproved) rowClass += ' bg-amber-50/60';
-
-                                            let unitOfMeasure = 'unit';
-                                            const foundType = assetCategories
-                                                .flatMap(cat => cat.types)
-                                                .find(type => 
-                                                    type.standardItems?.some(stdItem => 
-                                                        stdItem.name === item.itemName && stdItem.brand === item.itemTypeBrand
-                                                    )
-                                                );
-                                            
-                                            if (foundType && foundType.unitOfMeasure) {
-                                                unitOfMeasure = foundType.unitOfMeasure;
-                                            }
-                                            
-                                            return (
-                                                <tr key={item.id} className={rowClass}>
-                                                    <td className={`p-3 text-center align-top ${isRejected ? 'text-gray-500' : 'text-gray-800'}`}>
-                                                        {isRejected ? <s className="text-gray-400">{index + 1}.</s> : `${index + 1}.`}
-                                                    </td>
-                                                    <td className="p-3 font-semibold align-top">
-                                                        <div className={`flex items-center gap-2 ${isRejected ? 'text-danger-text' : 'text-gray-800'}`}>
-                                                            <span className={isRejected ? 'line-through' : ''}>{item.itemName}</span>
-                                                            {isPartiallyApproved && <span className="px-2 py-0.5 text-xs font-bold text-white bg-amber-500 rounded-full">Direvisi</span>}
-                                                            {isRejected && <span className="px-2 py-0.5 text-xs font-bold text-white bg-danger rounded-full">Ditolak</span>}
-                                                        </div>
-                                                    </td>
-                                                    <td className={`p-3 align-top ${isRejected ? 'text-gray-500 line-through' : 'text-gray-600'}`}>{item.itemTypeBrand}</td>
-                                                    <td className="p-3 text-center font-medium align-top">
-                                                        <div className="flex flex-col items-center leading-tight">
-                                                            {isAdjusted ? (
-                                                                <>
-                                                                    <s className="text-xs text-gray-500">{item.quantity}</s>
-                                                                    <strong className={`text-base ${isRejected ? 'text-danger-text' : 'text-amber-700'}`}>{approvedQuantity}</strong>
-                                                                </>
-                                                            ) : (
-                                                                <strong className="text-base text-gray-800">{item.quantity}</strong>
-                                                            )}
-                                                        </div>
-                                                        <span className="text-xs text-gray-600">{unitOfMeasure}</span>
-                                                    </td>
-                                                    <td className={`p-3 text-xs italic align-top ${isRejected ? 'text-gray-500 line-through' : 'text-gray-600'}`}>"{item.keterangan}"</td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    {canViewPrice(currentUser) && (
-                                        <tfoot className="bg-gray-100">
-                                            <tr>
-                                                <td colSpan={5} className="p-2 text-center font-bold text-gray-800">
-                                                    Total Harga: Rp. {calculatedTotalValue.toLocaleString('id-ID')}
-                                                </td>
-                                            </tr>
-                                        </tfoot>
-                                    )}
-                                </table>
-                            </div>
-                        </section>
-
-                        {/* Updated condition to use permission check */}
-                        {request.status === ItemStatus.LOGISTIC_APPROVED && hasPermission(currentUser, 'requests:approve:purchase') && (
-                            <section className="p-4 mt-6 border-t-2 border-dashed no-print">
-                                <h4 className="font-semibold text-gray-800 border-b pb-1 mb-4">Formulir Detail Pembelian</h4>
-                                <div className="space-y-4">
-                                    {request.items.map(item => {
-                                        const approvedQuantity = request.itemStatuses?.[item.id]?.approvedQuantity ?? item.quantity;
-                                        const isRejected = approvedQuantity === 0;
-                                        return (
-                                            <ItemPurchaseDetailsForm
-                                                key={item.id}
-                                                item={item}
-                                                approvedQuantity={approvedQuantity}
-                                                onChange={(details) => handlePurchaseDetailChange(item.id, details)}
-                                                isDisabled={isRejected}
-                                            />
-                                        );
-                                    })}
-                                </div>
-                            </section>
-                        )}
-
-                        {request.purchaseDetails && canViewPrice(currentUser) && (
-                            <PurchaseDetailsView request={request} details={request.purchaseDetails} currentUser={currentUser} />
-                        )}
-
-                        {request.isRegistered && (
-                            <section className="pt-4 text-sm border-t">
-                                <span className="font-semibold text-gray-600">Aset Terkait: </span>
-                                {assets.filter(a => a.woRoIntNumber === request.id).map(asset => (
-                                    <ClickableLink key={asset.id} onClick={() => onShowPreview({ type: 'asset', id: asset.id })}>
-                                        {asset.id}
-                                    </ClickableLink>
-                                ))}
-                            </section>
-                        )}
-
-                        <div className="flex items-center gap-2 pb-3 mb-4 border-b">
-                            <h3 className="text-base font-semibold text-gray-800">Progres Persetujuan</h3>
-                        </div>
-                        <ApprovalProgress request={request} />
+                    <div className="text-center">
+                        <h3 className="text-xl font-bold uppercase text-tm-dark">Surat Permintaan Pembelian Barang</h3>
+                        <p className="text-sm text-tm-secondary">Nomor Dokumen: {request.docNumber || request.id}</p>
                     </div>
                     
-                    {showProcurement && <ProcurementProgressCard request={request} assets={assets} />}
+                    <section>
+                        <h4 className="font-semibold text-gray-800 border-b pb-1 mb-2">Detail Dokumen</h4>
+                        <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-3 text-sm">
+                            <PreviewItem label="Tanggal Request" value={new Date(request.requestDate).toLocaleString('id-ID')} />
+                            <PreviewItem label="Pemohon" value={request.requester} />
+                            <PreviewItem label="Divisi" value={request.division} />
+                            <PreviewItem label="Tipe Order">
+                                <OrderIndicator order={request.order} />
+                            </PreviewItem>
+                            <PreviewItem label="Status Saat Ini">
+                                <RequestStatusIndicator status={request.status} />
+                            </PreviewItem>
+                            {request.order.type === 'Project Based' && (
+                                <PreviewItem label="Nama Proyek" value={request.order.project} />
+                            )}
+                        </dl>
+                        {request.order.type === 'Urgent' && (
+                            <div className="mt-4">
+                                <PreviewItem label="Justifikasi Urgent" fullWidth>
+                                    <p className="p-3 text-sm bg-amber-50 border border-amber-200 rounded-md italic">
+                                        "{request.order.justification}"
+                                    </p>
+                                </PreviewItem>
+                            </div>
+                        )}
+                    </section>
+                    
+                    <section>
+                        <h4 className="font-semibold text-gray-800 border-b pb-1 mb-2">Rincian Barang yang Diminta</h4>
+                        <div className="overflow-x-auto">
+                             <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-100 text-xs uppercase text-gray-700">
+                                    <tr>
+                                        <th className="p-3 w-10">No.</th>
+                                        <th className="p-3">Nama Barang</th>
+                                        <th className="p-3">Tipe/Brand</th>
+                                        <th className="p-3 text-center w-40">Jumlah</th>
+                                        <th className="p-3">Keterangan</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {request.items.map((item, index) => {
+                                        const itemStatus = request.itemStatuses?.[item.id];
+                                        const approvedQuantity = itemStatus?.approvedQuantity;
+                                        const isAdjusted = typeof approvedQuantity === 'number';
 
-                    <div className="mt-8 bg-white border border-gray-200/80 rounded-xl shadow-sm no-print">
-                        <div className="p-6">
-                            <h3 className="text-lg font-semibold text-gray-800">Aktivitas & Diskusi</h3>
-                            <p className="text-sm text-gray-500 mt-1">Diskusikan atau lihat riwayat aktivitas terkait permintaan ini.</p>
+                                        const isPartiallyApproved = isAdjusted && approvedQuantity > 0 && approvedQuantity < item.quantity;
+                                        const isRejected = isAdjusted && approvedQuantity === 0;
+                                        
+                                        let rowClass = 'border-b';
+                                        if (isRejected) rowClass += ' bg-red-50/60';
+                                        else if (isPartiallyApproved) rowClass += ' bg-amber-50/60';
+
+                                        let unitOfMeasure = 'unit';
+                                        const foundType = assetCategories
+                                            .flatMap(cat => cat.types)
+                                            .find(type => 
+                                                type.standardItems?.some(stdItem => 
+                                                    stdItem.name === item.itemName && stdItem.brand === item.itemTypeBrand
+                                                )
+                                            );
+                                        
+                                        if (foundType && foundType.unitOfMeasure) {
+                                            unitOfMeasure = foundType.unitOfMeasure;
+                                        }
+                                        
+                                        return (
+                                            <tr key={item.id} className={rowClass}>
+                                                <td className={`p-3 text-center align-top ${isRejected ? 'text-gray-500' : 'text-gray-800'}`}>
+                                                    {isRejected ? <s className="text-gray-400">{index + 1}.</s> : `${index + 1}.`}
+                                                </td>
+                                                <td className="p-3 font-semibold align-top">
+                                                    <div className={`flex items-center gap-2 ${isRejected ? 'text-danger-text' : 'text-gray-800'}`}>
+                                                        <span className={isRejected ? 'line-through' : ''}>{item.itemName}</span>
+                                                        {isPartiallyApproved && <span className="px-2 py-0.5 text-xs font-bold text-white bg-amber-500 rounded-full">Direvisi</span>}
+                                                        {isRejected && <span className="px-2 py-0.5 text-xs font-bold text-white bg-danger rounded-full">Ditolak</span>}
+                                                    </div>
+                                                </td>
+                                                <td className={`p-3 align-top ${isRejected ? 'text-gray-500 line-through' : 'text-gray-600'}`}>{item.itemTypeBrand}</td>
+                                                <td className="p-3 text-center font-medium align-top">
+                                                    <div className="flex flex-col items-center leading-tight">
+                                                        {isAdjusted ? (
+                                                            <>
+                                                                <s className="text-xs text-gray-500">{item.quantity}</s>
+                                                                <strong className={`text-base ${isRejected ? 'text-danger-text' : 'text-amber-700'}`}>{approvedQuantity}</strong>
+                                                            </>
+                                                        ) : (
+                                                            <strong className="text-base text-gray-800">{item.quantity}</strong>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-xs text-gray-600">{unitOfMeasure}</span>
+                                                </td>
+                                                <td className={`p-3 text-xs italic align-top ${isRejected ? 'text-gray-500 line-through' : 'text-gray-600'}`}>"{item.keterangan}"</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                                {canViewPrice(currentUser) && (
+                                     <tfoot className="bg-gray-100">
+                                        <tr>
+                                            <td colSpan={5} className="p-2 text-center font-bold text-gray-800">
+                                                Total Harga: Rp. {calculatedTotalValue.toLocaleString('id-ID')}
+                                            </td>
+                                        </tr>
+                                     </tfoot>
+                                )}
+                            </table>
                         </div>
-                        <div className="p-6 pt-0">
-                            {/* New Comment Form */}
-                            <div className="flex items-start space-x-3">
-                                <Avatar name={currentUser.name} className="w-10 h-10 flex-shrink-0" />
-                                <div className="flex-1">
-                                    {replyingTo && (
-                                        <div className="mb-2 px-3 py-1.5 text-xs text-gray-600 bg-gray-100 border rounded-md">
-                                            Membalas kepada <span className="font-semibold">{replyingTo.author}</span>
-                                            <button onClick={() => setReplyingTo(null)} className="ml-2 text-red-500 hover:underline font-semibold">[Batal]</button>
-                                        </div>
-                                    )}
-                                    <div className="relative">
-                                        <textarea
-                                            ref={commentInputRef}
-                                            value={newComment}
-                                            onChange={(e) => setNewComment(e.target.value)}
-                                            onKeyDown={handleKeyDown}
-                                            rows={1}
-                                            style={{ overflow: 'hidden' }}
-                                            className="block w-full px-4 py-2.5 pr-14 text-sm text-gray-900 placeholder:text-gray-500 bg-gray-50 border border-gray-300 rounded-full shadow-sm resize-none focus:ring-2 focus:ring-tm-accent focus:border-tm-accent disabled:bg-gray-200/50"
-                                            placeholder={isCommentDisabled ? "Diskusi telah ditutup untuk permintaan ini." : "Tulis komentar..."}
-                                            disabled={isCommentDisabled}
+                    </section>
+
+                    {/* Updated condition to use permission check */}
+                    {request.status === ItemStatus.LOGISTIC_APPROVED && hasPermission(currentUser, 'requests:approve:purchase') && (
+                        <section className="p-4 mt-6 border-t-2 border-dashed no-print">
+                            <h4 className="font-semibold text-gray-800 border-b pb-1 mb-4">Formulir Detail Pembelian</h4>
+                            <div className="space-y-4">
+                                {request.items.map(item => {
+                                    const approvedQuantity = request.itemStatuses?.[item.id]?.approvedQuantity ?? item.quantity;
+                                    const isRejected = approvedQuantity === 0;
+                                    return (
+                                        <ItemPurchaseDetailsForm
+                                            key={item.id}
+                                            item={item}
+                                            approvedQuantity={approvedQuantity}
+                                            onChange={(details) => handlePurchaseDetailChange(item.id, details)}
+                                            isDisabled={isRejected}
                                         />
-                                        {!isCommentDisabled && (
-                                            <button
-                                                onClick={handleAddComment}
-                                                disabled={!newComment.trim()}
-                                                className="absolute bottom-1.5 right-1.5 p-2 text-white bg-tm-primary rounded-full shadow-sm hover:bg-tm-primary-hover disabled:bg-tm-primary/60 disabled:cursor-not-allowed"
-                                            >
-                                                <SendIcon className="w-4 h-4" />
-                                            </button>
-                                        )}
+                                    );
+                                })}
+                            </div>
+                        </section>
+                    )}
+
+                    {request.purchaseDetails && canViewPrice(currentUser) && (
+                        <PurchaseDetailsView request={request} details={request.purchaseDetails} currentUser={currentUser} />
+                    )}
+
+                    {request.isRegistered && (
+                        <section className="pt-4 text-sm border-t">
+                            <span className="font-semibold text-gray-600">Aset Terkait: </span>
+                            {assets.filter(a => a.woRoIntNumber === request.id).map(asset => (
+                                <ClickableLink key={asset.id} onClick={() => onShowPreview({ type: 'asset', id: asset.id })}>
+                                    {asset.id}
+                                </ClickableLink>
+                            ))}
+                        </section>
+                    )}
+
+                     <div className="flex items-center gap-2 pb-3 mb-4 border-b">
+                        <h3 className="text-base font-semibold text-gray-800">Progres Persetujuan</h3>
+                    </div>
+                    <ApprovalProgress request={request} />
+                </div>
+                
+                {showProcurement && <ProcurementProgressCard request={request} assets={assets} />}
+
+                 <div className="mt-8 bg-white border border-gray-200/80 rounded-xl shadow-sm no-print">
+                    <div className="p-6">
+                        <h3 className="text-lg font-semibold text-gray-800">Aktivitas & Diskusi</h3>
+                        <p className="text-sm text-gray-500 mt-1">Diskusikan atau lihat riwayat aktivitas terkait permintaan ini.</p>
+                    </div>
+                    <div className="p-6 pt-0">
+                        {/* New Comment Form */}
+                        <div className="flex items-start space-x-3">
+                            <Avatar name={currentUser.name} className="w-10 h-10 flex-shrink-0" />
+                            <div className="flex-1">
+                                {replyingTo && (
+                                    <div className="mb-2 px-3 py-1.5 text-xs text-gray-600 bg-gray-100 border rounded-md">
+                                        Membalas kepada <span className="font-semibold">{replyingTo.author}</span>
+                                        <button onClick={() => setReplyingTo(null)} className="ml-2 text-red-500 hover:underline font-semibold">[Batal]</button>
                                     </div>
+                                )}
+                                <div className="relative">
+                                    <textarea
+                                        ref={commentInputRef}
+                                        value={newComment}
+                                        onChange={(e) => setNewComment(e.target.value)}
+                                        onKeyDown={handleKeyDown}
+                                        rows={1}
+                                        style={{ overflow: 'hidden' }}
+                                        className="block w-full px-4 py-2.5 pr-14 text-sm text-gray-900 placeholder:text-gray-500 bg-gray-50 border border-gray-300 rounded-full shadow-sm resize-none focus:ring-2 focus:ring-tm-accent focus:border-tm-accent disabled:bg-gray-200/50"
+                                        placeholder={isCommentDisabled ? "Diskusi telah ditutup untuk permintaan ini." : "Tulis komentar..."}
+                                        disabled={isCommentDisabled}
+                                    />
                                     {!isCommentDisabled && (
-                                        <p className="mt-2 text-xs text-gray-500">
-                                            Tekan <kbd className="px-1.5 py-0.5 text-xs font-semibold text-gray-800 bg-gray-200 rounded-sm">Enter</kbd> untuk mengirim.
-                                            <kbd className="ml-2 px-1.5 py-0.5 text-xs font-semibold text-gray-800 bg-gray-200 rounded-sm">Shift</kbd> + <kbd className="px-1.5 py-0.5 text-xs font-semibold text-gray-800 bg-gray-200 rounded-sm">Enter</kbd> untuk baris baru.
-                                        </p>
+                                        <button
+                                            onClick={handleAddComment}
+                                            disabled={!newComment.trim()}
+                                            className="absolute bottom-1.5 right-1.5 p-2 text-white bg-tm-primary rounded-full shadow-sm hover:bg-tm-primary-hover disabled:bg-tm-primary/60 disabled:cursor-not-allowed"
+                                        >
+                                            <SendIcon className="w-4 h-4" />
+                                        </button>
                                     )}
                                 </div>
+                                {!isCommentDisabled && (
+                                    <p className="mt-2 text-xs text-gray-500">
+                                        Tekan <kbd className="px-1.5 py-0.5 text-xs font-semibold text-gray-800 bg-gray-200 rounded-sm">Enter</kbd> untuk mengirim.
+                                        <kbd className="ml-2 px-1.5 py-0.5 text-xs font-semibold text-gray-800 bg-gray-200 rounded-sm">Shift</kbd> + <kbd className="px-1.5 py-0.5 text-xs font-semibold text-gray-800 bg-gray-200 rounded-sm">Enter</kbd> untuk baris baru.
+                                    </p>
+                                )}
                             </div>
                         </div>
-                        
-                        {/* Activity List */}
-                        <div className="px-6 pb-6">
-                            <CommentThread
-                                activities={(request.activityLog || []).filter(a => !a.parentId).sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())}
-                                allActivities={request.activityLog || []}
-                                level={0}
-                                onStartReply={handleStartReply}
-                                onStartEdit={handleStartEdit}
-                                onDelete={setActivityToDelete}
-                                currentUser={currentUser}
-                                editingActivityId={editingActivityId}
-                                editText={editText}
-                                onSaveEdit={handleSaveEdit}
-                                onCancelEdit={handleCancelEdit}
-                                onSetEditText={setEditText}
-                            />
-                        </div>
+                    </div>
+                    
+                    {/* Activity List */}
+                    <div className="px-6 pb-6">
+                        <CommentThread
+                            activities={(request.activityLog || []).filter(a => !a.parentId).sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())}
+                            allActivities={request.activityLog || []}
+                            level={0}
+                            onStartReply={handleStartReply}
+                            onStartEdit={handleStartEdit}
+                            onDelete={setActivityToDelete}
+                            currentUser={currentUser}
+                            editingActivityId={editingActivityId}
+                            editText={editText}
+                            onSaveEdit={handleSaveEdit}
+                            onCancelEdit={handleCancelEdit}
+                            onSetEditText={setEditText}
+                        />
                     </div>
                 </div>
-            </DetailPageLayout>
+            </div>
 
             {activityToDelete && (
                 <Modal isOpen={!!activityToDelete} onClose={() => setActivityToDelete(null)} title="Hapus Komentar?" size="sm" zIndex="z-[70]"
@@ -1441,7 +1438,7 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
                     <p className="text-sm text-gray-600">Anda yakin ingin menghapus komentar ini secara permanen?</p>
                 </Modal>
             )}
-        </>
+        </DetailPageLayout>
     );
 };
 
