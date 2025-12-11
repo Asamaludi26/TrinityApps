@@ -1,6 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { inject } from '@vercel/analytics';
 import RootApp from './src/App';
+
+// Inject Vercel Web Analytics
+inject();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

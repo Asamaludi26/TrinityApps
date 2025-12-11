@@ -9,12 +9,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/core": "^11.1.9",
+    "@vercel/analytics": "^1.6.1",
     "react": "^19.1.1",
     "react-dom": "^19.2.0",
     "react-icons": "latest",
-    "zustand": "^5.0.9",
-    "@nestjs/common": "^11.1.9",
-    "@nestjs/core": "^11.1.9"
+    "zustand": "^5.0.9"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
