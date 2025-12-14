@@ -1,234 +1,229 @@
-# Panduan Rinci Implementasi Backend (Step-by-Step)
 
-Dokumen ini memberikan panduan teknis mendalam untuk membangun backend Aplikasi Inventori Aset menggunakan NestJS, Prisma, dan PostgreSQL.
+# Panduan Pengembangan Backend (NestJS & PostgreSQL)
 
-## 1. Prasyarat
--   Node.js (v18+) & pnpm
--   PostgreSQL server berjalan (lokal atau via Docker)
--   NestJS CLI: `pnpm add -g @nestjs/cli`
+Dokumen ini adalah panduan teknis lengkap untuk membangun, mengembangkan, dan memelihara backend Aplikasi Inventori Aset. Backend ini dibangun menggunakan **NestJS**, **Prisma ORM**, dan database **PostgreSQL**.
 
-## 2. Langkah 1: Setup Proyek & Database
-1.  **Buat Proyek NestJS Baru**:
-    ```bash
-    nest new backend
-    cd backend
-    ```
+## 1. Prasyarat Lingkungan
 
-2.  **Instal Dependensi Prisma**:
-    ```bash
-    pnpm add prisma @prisma/client
-    ```
+Sebelum memulai, pastikan lingkungan pengembangan server memiliki:
+-   **Node.js**: Versi 18.x atau lebih baru (LTS direkomendasikan).
+-   **pnpm**: Package manager yang digunakan (`npm install -g pnpm`).
+-   **PostgreSQL**: Versi 14.x atau lebih baru.
+-   **NestJS CLI**: Instal secara global dengan `npm install -g @nestjs/cli`.
 
-3.  **Inisialisasi Prisma**:
-    ```bash
-    pnpm prisma init --datasource-provider postgresql
-    ```
-    Ini akan membuat folder `prisma` dengan file `schema.prisma` dan file `.env` untuk `DATABASE_URL`.
+---
 
-4.  **Konfigurasi Koneksi Database**:
-    Buka file `.env` dan atur `DATABASE_URL` sesuai dengan konfigurasi PostgreSQL Anda.
-    ```env
-    DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=public"
-    ```
+## 2. Arsitektur Aplikasi (Modular Monolith)
 
-5.  **Isi Skema Database**:
-    Salin seluruh skema dari [Dokumen Skema Database](../01_CONCEPT_AND_ARCHITECTURE/DATABASE_SCHEMA.md) ke dalam file `prisma/schema.prisma`.
+Kami menggunakan pendekatan **Modular** di NestJS. Setiap fitur bisnis (Aset, User, Request) dikapsulasi dalam modulnya sendiri yang berisi Controller, Service, dan DTO.
 
-6.  **Jalankan Migrasi Pertama**:
-    Perintah ini akan membuat database (jika belum ada), menerapkan skema, dan men-generate Prisma Client.
-    ```bash
-    pnpm prisma migrate dev --name init
-    ```
-    Setiap kali Anda mengubah `schema.prisma`, jalankan kembali perintah ini dengan nama migrasi yang baru.
+### 2.1. Struktur Folder
+```
+src/
+├── app.module.ts        # Root Module yang menggabungkan semua modul
+├── main.ts              # Entry point aplikasi (Config, CORS, Global Pipes)
+├── prisma/              # Konfigurasi Database
+│   ├── prisma.module.ts
+│   └── prisma.service.ts
+├── common/              # Logic yang digunakan bersama
+│   ├── decorators/      # Custom Decorators (@CurrentUser)
+│   ├── guards/          # Auth Guards (JwtAuthGuard, RolesGuard)
+│   └── filters/         # Global Exception Filters
+├── auth/                # Modul Autentikasi (JWT Strategy)
+├── assets/              # Modul Manajemen Aset
+│   ├── dto/             # Data Transfer Objects (Validasi Input)
+│   │   ├── create-asset.dto.ts
+│   │   └── update-asset.dto.ts
+│   ├── assets.controller.ts  # HTTP Endpoints
+│   ├── assets.service.ts     # Business Logic
+│   └── assets.module.ts      # Dependency Injection Container
+└── users/               # Modul Manajemen Pengguna
+```
 
-## 3. Langkah 2: Membangun Modul Inti (`PrismaService`, `Auth`)
+---
 
-### 3.1. Membuat PrismaService
-Service ini akan menyediakan instance Prisma Client yang dapat di-inject ke service lain.
-1.  Buat modul & service:
-    ```bash
-    nest g module shared/prisma
-    nest g service shared/prisma
-    ```
-2.  Implementasikan `PrismaService`:
-    **File**: `src/shared/prisma/prisma.service.ts`
-    ```typescript
-    import { Injectable, OnModuleInit } from '@nestjs/common';
-    import { PrismaClient } from '@prisma/client';
+## 3. Manajemen Database (Prisma ORM)
 
-    @Injectable()
-    export class PrismaService extends PrismaClient implements OnModuleInit {
-      async onModuleInit() {
-        await this.$connect();
-      }
-    }
-    ```
+Pengelolaan skema database dilakukan sepenuhnya melalui file `prisma/schema.prisma`.
 
-### 3.2. Membangun Modul Autentikasi (`Auth`)
-1.  Instal dependensi JWT & Passport:
-    ```bash
-    pnpm add @nestjs/passport passport passport-jwt @nestjs/jwt bcrypt
-    pnpm add -D @types/passport-jwt @types/bcrypt
-    ```
-2.  Generate modul `auth`:
-    ```bash
-    nest g resource auth --no-spec
-    ```
-3.  Implementasikan Logika:
-    **File**: `src/auth/auth.service.ts`
-    ```typescript
-    import { Injectable, UnauthorizedException } from '@nestjs/common';
-    import { PrismaService } from '../shared/prisma/prisma.service';
-    import { JwtService } from '@nestjs/jwt';
-    import * as bcrypt from 'bcrypt';
+### 3.1. Definisi Skema (`schema.prisma`)
+Skema ini adalah *Single Source of Truth* untuk struktur data.
 
-    @Injectable()
-    export class AuthService {
-      constructor(
-        private prisma: PrismaService,
-        private jwtService: JwtService,
-      ) {}
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
 
-      async validateUser(email: string, pass: string): Promise<any> {
-        const user = await this.prisma.user.findUnique({ where: { email } });
-        if (user && await bcrypt.compare(pass, user.password)) {
-          const { password, ...result } = user;
-          return result;
-        }
-        return null;
-      }
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
-      async login(user: any) {
-        const payload = { email: user.email, sub: user.id, role: user.role };
-        return {
-          access_token: this.jwtService.sign(payload),
-        };
-      }
-    }
-    ```
-    **File**: `src/auth/jwt.strategy.ts` (di dalam `src/auth/strategies`)
-    ```typescript
-    import { Injectable } from '@nestjs/common';
-    import { PassportStrategy } from '@nestjs/passport';
-    import { ExtractJwt, Strategy } from 'passport-jwt';
+model User {
+  id         Int       @id @default(autoincrement())
+  name       String
+  email      String    @unique
+  password   String
+  role       String    // Enum: 'Super Admin', 'Admin Logistik', dll
+  divisionId Int?
+  division   Division? @relation(fields: [divisionId], references: [id])
+  requests   Request[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
 
-    @Injectable()
-    export class JwtStrategy extends PassportStrategy(Strategy) {
-      constructor() {
-        super({
-          jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-          ignoreExpiration: false,
-          secretOrKey: process.env.JWT_SECRET, // Pastikan ini ada di .env
-        });
-      }
+model Asset {
+  id               String    @id // Format: AST-001
+  name             String
+  serialNumber     String?   @unique
+  status           String    // Enum: IN_STORAGE, IN_USE
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
 
-      async validate(payload: any) {
-        // payload adalah hasil dekode dari JWT
-        return { id: payload.sub, email: payload.email, role: payload.role };
-      }
-    }
-    ```
+// ... model lainnya (Request, Handover, dll)
+```
 
-## 4. Langkah 3: Membangun Modul Fitur (Contoh: `Assets`)
-1.  Generate modul `assets`:
-    ```bash
-    nest g resource assets --no-spec
-    ```
-2.  **Buat DTO (Data Transfer Object)**:
-    File: `src/assets/dto/create-asset.dto.ts`
-    ```typescript
-    import { IsString, IsNotEmpty, IsOptional, IsEnum, IsNumber } from 'class-validator';
-    import { AssetStatus, AssetCondition } from '@prisma/client';
+### 3.2. Strategi Migrasi (PENTING)
 
-    export class CreateAssetDto {
-      @IsString() @IsNotEmpty() id: string;
-      @IsString() @IsNotEmpty() name: string;
-      // ... tambahkan properti lain dengan decorator validasi
-      @IsEnum(AssetStatus) @IsOptional() status?: AssetStatus;
-      @IsEnum(AssetCondition) @IsNotEmpty() condition: AssetCondition;
-    }
-    ```
-3.  **Implementasikan Service**:
-    File: `src/assets/assets.service.ts`
-    ```typescript
-    import { Injectable } from '@nestjs/common';
-    import { PrismaService } from '../shared/prisma/prisma.service';
-    import { CreateAssetDto } from './dto/create-asset.dto';
+**Di Lingkungan Development:**
+Gunakan perintah ini setiap kali Anda mengubah `schema.prisma`. Ini akan membuat file migrasi SQL baru.
+```bash
+npx prisma migrate dev --name nama_perubahan_anda
+# Contoh: npx prisma migrate dev --name add_user_role
+```
 
-    @Injectable()
-    export class AssetsService {
-      constructor(private prisma: PrismaService) {}
+**Di Lingkungan Produksi:**
+JANGAN gunakan `migrate dev` di produksi. Gunakan perintah berikut untuk menerapkan migrasi yang sudah ada tanpa mereset data:
+```bash
+npx prisma migrate deploy
+```
 
-      create(createAssetDto: CreateAssetDto) {
-        return this.prisma.asset.create({ data: createAssetDto });
-      }
+---
 
-      findAll() {
-        return this.prisma.asset.findMany();
-      }
-    }
-    ```
-4.  **Implementasikan Controller**:
-    File: `src/assets/assets.controller.ts`
-    ```typescript
-    import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
-    import { AssetsService } from './assets.service';
-    import { CreateAssetDto } from './dto/create-asset.dto';
-    import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // Import Guard
-    import { Roles } from '../auth/decorators/roles.decorator'; // Import Decorator
-    import { RolesGuard } from '../auth/guards/roles.guard'; // Import Guard
-    import { UserRole } from '@prisma/client';
+## 4. Pola Pengembangan Fitur (Best Practices)
 
-    @Controller('assets')
-    @UseGuards(JwtAuthGuard, RolesGuard) // Lindungi semua endpoint di controller ini
-    export class AssetsController {
-      constructor(private readonly assetsService: AssetsService) {}
+### 4.1. Data Transfer Objects (DTO)
+Semua input dari client **wajib** divalidasi menggunakan DTO. Jangan pernah menggunakan `any` di controller.
 
-      @Post()
-      @Roles(UserRole.AdminLogistik, UserRole.SuperAdmin) // Hanya Admin & Super Admin
-      create(@Body() createAssetDto: CreateAssetDto) {
-        return this.assetsService.create(createAssetDto);
-      }
+**File**: `src/assets/dto/create-asset.dto.ts`
+```typescript
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsEnum } from 'class-validator';
 
-      @Get()
-      // Tidak ada @Roles, berarti semua user yang terautentikasi bisa akses
-      findAll() {
-        return this.assetsService.findAll();
-      }
-    }
-    ```
+export class CreateAssetDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
 
-## 5. Langkah 4: Konfigurasi Global
-Pastikan aplikasi Anda memiliki konfigurasi global untuk validasi, keamanan, dan lainnya.
-**File**: `src/main.ts`
+  @IsString()
+  @IsNotEmpty()
+  category: string;
+
+  @IsString()
+  @IsOptional()
+  serialNumber?: string;
+  
+  @IsNumber()
+  @IsOptional()
+  purchasePrice?: number;
+}
+```
+
+### 4.2. Controller (Handling Request)
+Controller hanya bertugas menerima request, memanggil service, dan mengembalikan response. Hindari logika bisnis yang kompleks di sini.
+
+**File**: `src/assets/assets.controller.ts`
+```typescript
+import { Controller, Get, Post, Body, UseGuards } from '@nestjs/common';
+import { AssetsService } from './assets.service';
+import { CreateAssetDto } from './dto/create-asset.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+
+@Controller('assets')
+@UseGuards(JwtAuthGuard)
+export class AssetsController {
+  constructor(private readonly assetsService: AssetsService) {}
+
+  @Post()
+  @Roles('Admin Logistik', 'Super Admin') // RBAC Protection
+  create(@Body() createAssetDto: CreateAssetDto) {
+    return this.assetsService.create(createAssetDto);
+  }
+
+  @Get()
+  findAll() {
+    return this.assetsService.findAll();
+  }
+}
+```
+
+### 4.3. Service (Business Logic)
+Service berisi logika bisnis utama dan interaksi langsung dengan Prisma.
+
+**File**: `src/assets/assets.service.ts`
+```typescript
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { CreateAssetDto } from './dto/create-asset.dto';
+
+@Injectable()
+export class AssetsService {
+  constructor(private prisma: PrismaService) {}
+
+  async create(data: CreateAssetDto) {
+    // Logika bisnis tambahan (misal: generate custom ID)
+    return this.prisma.asset.create({ data });
+  }
+
+  async findAll() {
+    return this.prisma.asset.findMany();
+  }
+}
+```
+
+---
+
+## 5. Konfigurasi `main.ts` untuk Produksi
+
+Pastikan `main.ts` dikonfigurasi untuk keamanan dan validasi global.
+
 ```typescript
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
-import * as helmet from 'helmet';
+import * as compression from 'compression';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Security Headers
+  app.use(helmet());
   
-  // Aktifkan CORS
+  // Gzip Compression
+  app.use(compression());
+
+  // CORS (Cross-Origin Resource Sharing)
+  // Ubah origin sesuai domain frontend di produksi
   app.enableCors({
-    origin: 'http://localhost:5173', // Ganti dengan URL frontend produksi
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
   });
 
-  // Gunakan Helmet untuk header keamanan
-  app.use(helmet());
-
-  // Atur prefix global untuk semua API
-  app.setGlobalPrefix('api');
-
-  // Aktifkan validasi global menggunakan DTO
+  // Global Validation
+  // whitelist: true akan membuang properti yang tidak ada di DTO (mencegah injeksi data sampah)
   app.useGlobalPipes(new ValidationPipe({
-    whitelist: true, // Hapus properti yang tidak ada di DTO
-    transform: true, // Transformasi payload ke instance DTO
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
   }));
 
-  await app.listen(3001);
+  // Global Prefix
+  app.setGlobalPrefix('api');
+
+  await app.listen(process.env.PORT || 3001);
 }
 bootstrap();
 ```

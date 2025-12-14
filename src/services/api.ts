@@ -71,23 +71,32 @@ async function request<T>(operation: () => T, latency: number = MOCK_LATENCY_MS)
 }
 
 // --- Data Initialization ---
-// [REVISED] Fungsi ini menjadi SATU-SATUNYA sumber kebenaran untuk inisialisasi data.
-// Ini secara paksa menimpa localStorage dengan data mock terbaru SETIAP KALI aplikasi dimuat.
+// [REVISED] Fungsi ini diperbarui untuk menerapkan pola "Initialize Only If Empty".
+// Data hanya akan disimpan ke localStorage jika kunci tersebut BELUM ADA.
 const initializeData = () => {
-    saveToStorage('app_users', initialMockUsers);
-    saveToStorage('app_assets', mockAssets);
-    saveToStorage('app_requests', initialMockRequests);
-    saveToStorage('app_handovers', mockHandovers);
-    saveToStorage('app_dismantles', mockDismantles);
-    saveToStorage('app_customers', mockCustomers);
-    saveToStorage('app_divisions', mockDivisions);
-    saveToStorage('app_assetCategories', initialAssetCategories);
-    saveToStorage('app_notifications', mockNotifications);
-    saveToStorage('app_loanRequests', mockLoanRequests);
-    saveToStorage('app_maintenances', mockMaintenances);
-    saveToStorage('app_installations', mockInstallations);
-    saveToStorage('app_returns', mockReturns);
+    const initKey = <T>(key: string, initialData: T) => {
+        const existing = localStorage.getItem(key);
+        if (!existing) {
+            saveToStorage(key, initialData);
+        }
+    };
+
+    initKey('app_users', initialMockUsers);
+    initKey('app_assets', mockAssets);
+    initKey('app_requests', initialMockRequests);
+    initKey('app_handovers', mockHandovers);
+    initKey('app_dismantles', mockDismantles);
+    initKey('app_customers', mockCustomers);
+    initKey('app_divisions', mockDivisions);
+    initKey('app_assetCategories', initialAssetCategories);
+    initKey('app_notifications', mockNotifications);
+    initKey('app_loanRequests', mockLoanRequests);
+    initKey('app_maintenances', mockMaintenances);
+    initKey('app_installations', mockInstallations);
+    initKey('app_returns', mockReturns);
 };
+
+// Jalankan inisialisasi saat file dimuat
 initializeData();
 
 

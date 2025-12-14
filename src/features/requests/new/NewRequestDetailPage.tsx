@@ -389,7 +389,7 @@ const StatusAndActionSidebar: React.FC<RequestDetailPageProps & {
                             text="Submit ke CEO" 
                             color="primary" 
                             icon={CheckIcon} 
-                            title={!isPurchaseFormValid ? "Harap lengkapi detail pembelian terlebih dahulu" : ""}
+                            title={!isPurchaseFormValid ? "Formulir Detail Pembelian belum lengkap. Mohon isi Harga, Vendor, No PO, dan No Faktur untuk semua item." : "Kirim untuk persetujuan final"}
                         />
                         <ActionButton onClick={onOpenReviewModal} disabled={isLoading} text="Revisi / Tolak" color="secondary" icon={PencilIcon} />
                         {!request.ceoFollowUpSent && (
@@ -1164,18 +1164,26 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
             return itemStatus === undefined || itemStatus.approvedQuantity > 0;
         });
 
+        // Edge case: If no approved items, technically nothing to fill, but usually implies rejected.
+        // Return true to not block, but flow dictates rejection if 0.
         if (approvedItems.length === 0) {
-            return false;
+            return true;
         }
 
         return approvedItems.every(item => {
             const detail = itemPurchaseDetails[item.id];
-            return detail &&
-                   detail.purchasePrice && detail.purchasePrice > 0 &&
-                   detail.vendor.trim() !== '' &&
-                   detail.poNumber.trim() !== '' &&
-                   detail.invoiceNumber.trim() !== '' &&
-                   detail.purchaseDate;
+            
+            // Check if details object exists
+            if (!detail) return false;
+
+            // Strict checking for required fields
+            const hasPrice = Number(detail.purchasePrice) > 0;
+            const hasVendor = detail.vendor && detail.vendor.trim().length > 0;
+            const hasPO = detail.poNumber && detail.poNumber.trim().length > 0;
+            const hasInvoice = detail.invoiceNumber && detail.invoiceNumber.trim().length > 0;
+            const hasDate = !!detail.purchaseDate;
+
+            return hasPrice && hasVendor && hasPO && hasInvoice && hasDate;
         });
     }, [itemPurchaseDetails, request.items, request.itemStatuses, request.status, currentUser.role]);
 
