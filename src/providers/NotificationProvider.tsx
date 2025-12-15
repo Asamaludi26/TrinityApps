@@ -25,6 +25,7 @@ const typeDetails: Record<NotificationType, { Icon: React.FC<{className?:string}
   error: { Icon: ErrorIcon, barClass: 'bg-danger' },
   info: { Icon: InfoIcon, barClass: 'bg-info' },
   warning: { Icon: ExclamationTriangleIcon, barClass: 'bg-warning' },
+  SYSTEM: { Icon: InfoIcon, barClass: 'bg-gray-500' },
 };
 
 // FIX: Create a type guard to differentiate toast notifications from system notifications.

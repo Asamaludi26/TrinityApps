@@ -733,6 +733,11 @@ const ItemRegistration: React.FC<ItemRegistrationProps> = (props) => {
 
     const handleSave = async (data: RegistrationFormData, assetIdToUpdate?: string) => {
         try {
+            // Helper to check if item is bulk
+            const categoryObj = assetCategories.find(c => c.name === data.category);
+            const typeObj = categoryObj?.types.find(t => t.name === data.type);
+            const isBulk = typeObj?.trackingMethod === 'bulk';
+
             if (assetIdToUpdate) {
                 // Update Logic
                 const updatedAsset = {
@@ -740,8 +745,9 @@ const ItemRegistration: React.FC<ItemRegistrationProps> = (props) => {
                     // Map form data to Asset fields
                     name: data.assetName,
                     // serialNumber and macAddress come from the first bulkItem in editing mode
-                    serialNumber: data.bulkItems[0]?.serialNumber,
-                    macAddress: data.bulkItems[0]?.macAddress,
+                    // FORCE undefined if bulk to prevent empty string saving as value
+                    serialNumber: isBulk ? undefined : (data.bulkItems[0]?.serialNumber || undefined),
+                    macAddress: isBulk ? undefined : (data.bulkItems[0]?.macAddress || undefined),
                 };
                 // Remove helper fields not in Asset type
                 const { bulkItems, relatedRequestId, ...cleanData } = updatedAsset as any;
@@ -777,8 +783,9 @@ const ItemRegistration: React.FC<ItemRegistrationProps> = (props) => {
                         category: data.category,
                         type: data.type,
                         brand: data.brand,
-                        serialNumber: item.serialNumber || undefined,
-                        macAddress: item.macAddress || undefined,
+                        // FORCE undefined if bulk
+                        serialNumber: isBulk ? undefined : (item.serialNumber || undefined),
+                        macAddress: isBulk ? undefined : (item.macAddress || undefined),
                         purchasePrice: data.purchasePrice,
                         vendor: data.vendor,
                         poNumber: data.poNumber,

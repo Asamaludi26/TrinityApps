@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Page, Maintenance, User, Customer, Asset, ItemStatus, AssetStatus, ActivityLogEntry, AssetCategory, InstalledMaterial, PreviewData, MaintenanceReplacement } from '../../../types';
 import { useSortableData, SortConfig } from '../../../hooks/useSortableData';
@@ -176,7 +175,7 @@ const MaintenanceFormPage: React.FC<MaintenanceManagementPageProps> = (props) =>
         try {
             await addMaintenance(newMaintenance);
 
-            // Asset Replacement Logic
+            // 1. Asset Replacement Logic (Aset Tetap)
             if (maintenanceData.replacements && maintenanceData.replacements.length > 0) {
                 for (const rep of maintenanceData.replacements) {
                      await updateAsset(rep.oldAssetId, {
@@ -185,7 +184,6 @@ const MaintenanceFormPage: React.FC<MaintenanceManagementPageProps> = (props) =>
                         currentUser: null,
                         location: "Gudang Inventori",
                      });
-                     // Ideally append log separately, but skipping for brevity in mock
                      
                      await updateAsset(rep.newAssetId, {
                         status: AssetStatus.IN_USE,
@@ -195,7 +193,7 @@ const MaintenanceFormPage: React.FC<MaintenanceManagementPageProps> = (props) =>
                 }
             }
 
-            // Update Customer's Installed Materials
+            // 2. Prepare Materials to Install (Conversion Logic)
              const materialsToInstall: InstalledMaterial[] = (newMaintenance.materialsUsed || []).map((material) => {
                 let unit = "pcs";
                 let convertedQuantity = material.quantity;
@@ -223,7 +221,38 @@ const MaintenanceFormPage: React.FC<MaintenanceManagementPageProps> = (props) =>
                 };
             });
 
+            // 3. Update Stock & Customer Data
             if (materialsToInstall.length > 0) {
+                // a. Consume Stock
+                for (const mat of materialsToInstall) {
+                    // Cari stok yang tersedia
+                    const availableStock = assets
+                        .filter(a => 
+                            a.name === mat.itemName && 
+                            a.brand === mat.brand && 
+                            a.status === AssetStatus.IN_STORAGE
+                        )
+                        .sort((a, b) => new Date(a.registrationDate).getTime() - new Date(b.registrationDate).getTime());
+
+                    // Tentukan jumlah consumption (asumsi 1 unit stok mock = 1 unit material)
+                    // Note: Untuk kabel yang convert dari Roll ke Meter, ini akan menghabiskan 'Roll' jika quantity > 0.
+                    // Idealnya di masa depan: Logic pengurangan partial.
+                    const qtyToConsume = Math.min(mat.quantity, availableStock.length);
+                    
+                    if (qtyToConsume > 0) {
+                        const itemsToUpdate = availableStock.slice(0, qtyToConsume);
+                        for (const item of itemsToUpdate) {
+                             await updateAsset(item.id, {
+                                status: AssetStatus.IN_USE,
+                                currentUser: maintenanceData.customerId,
+                                location: `Terpasang di: ${maintenanceData.customerName}`,
+                                activityLog: [] 
+                            });
+                        }
+                    }
+                }
+
+                // b. Update Customer Record
                 const customer = customers.find(c => c.id === newMaintenance.customerId);
                 if (customer) {
                     const existingMaterials = customer.installedMaterials || [];

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Customer, CustomerStatus, Asset, User, AssetStatus, InstalledMaterial, AssetCategory } from '../../../types';
 import DatePicker from '../../../components/ui/DatePicker';
@@ -68,15 +67,24 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, assets, onSave, o
     const formId = "customer-form";
     const addNotification = useNotification();
 
+    // LOGIKA FILTER DIPERBARUI:
+    // 1. Hanya aset dengan status IN_STORAGE
+    // 2. Hanya kategori yang isCustomerInstallable = true
+    // 3. Hanya aset non-bulk (individual tracking)
     const availableAssets = useMemo(() => {
         return assets.filter(asset => {
             if (asset.status !== AssetStatus.IN_STORAGE) {
                 return false;
             }
             const category = assetCategories.find(c => c.name === asset.category);
-            const type = category?.types.find(t => t.name === asset.type);
+            
+            // Filter Kritis: Pastikan kategori boleh dipasang ke pelanggan
+            if (!category || !category.isCustomerInstallable) {
+                return false;
+            }
+
+            const type = category.types.find(t => t.name === asset.type);
             // Default to 'individual' tracking if trackingMethod is not specified.
-            // The filter should only include assets that are NOT bulk.
             return type?.trackingMethod !== 'bulk';
         });
     }, [assets, assetCategories]);
@@ -125,9 +133,25 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, assets, onSave, o
             setName(''); setAddress(''); setPhone(''); setEmail('');
             setStatus(CustomerStatus.ACTIVE); setInstallationDate(new Date()); setServicePackage('');
             setInitialAssignedAssetIds([]); setAssignedAssetIds([]);
-            setMaterials([]);
+            
+            // Auto-populate default materials for new customers
+            const defaultKeywords = ['Patchcord', 'Adaptor', 'Dropcore', 'protector sleeve'];
+            const defaultMaterials = defaultKeywords.map((keyword, idx): MaterialFormItem | null => {
+                const match = materialOptions.find(opt => opt.label.toLowerCase().includes(keyword.toLowerCase()));
+                if (match) {
+                    return {
+                        tempId: Date.now() + idx,
+                        modelKey: match.value,
+                        quantity: 0, // Default quantity, editable by user
+                        unit: match.unit || 'pcs'
+                    };
+                }
+                return null;
+            }).filter((m): m is MaterialFormItem => m !== null);
+
+            setMaterials(defaultMaterials);
         }
-    }, [customer, assets]);
+    }, [customer, assets, materialOptions]);
 
     useEffect(() => {
         const observer = new IntersectionObserver(([entry]) => setIsFooterVisible(entry.isIntersecting), { threshold: 0.1 });
@@ -136,9 +160,66 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, assets, onSave, o
         return () => { if (currentRef) observer.unobserve(currentRef); };
     }, []);
 
+    // Validasi Real-time: Cek apakah semua field wajib sudah terisi
+    const isFormValid = useMemo(() => {
+        return (
+            name.trim() !== '' &&
+            address.trim() !== '' &&
+            phone.trim() !== '' &&
+            email.trim() !== '' &&
+            servicePackage.trim() !== '' &&
+            installationDate !== null &&
+            !emailError && 
+            !addressError
+        );
+    }, [name, address, phone, email, servicePackage, installationDate, emailError, addressError]);
+
+    // LOGIKA BARU: Formatter Nama (Auto Capitalize)
+    const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        const formatted = val.replace(/\b\w/g, (char) => char.toUpperCase());
+        setName(formatted);
+    };
+
+    // LOGIKA BARU: Formatter Nomor Telepon (+62 dan hyphens)
     const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const numericValue = e.target.value.replace(/[^\d+]/g, '');
-        setPhone(numericValue);
+        let val = e.target.value.replace(/\D/g, ''); // Hapus semua non-angka
+        
+        if (!val) {
+            setPhone('');
+            return;
+        }
+
+        // Normalisasi prefix ke 62
+        if (val.startsWith('0')) {
+            val = '62' + val.slice(1);
+        } else if (!val.startsWith('62')) {
+            val = '62' + val;
+        }
+
+        // Batasi panjang maksimal (misal 15 digit)
+        val = val.slice(0, 15);
+
+        // Format visual: +62-8XX-XXXX-XXXX
+        let formatted = '+';
+        if (val.length > 0) formatted += val.slice(0, 2); // 62
+        if (val.length > 2) formatted += '-' + val.slice(2, 5); // 812
+        if (val.length > 5) formatted += '-' + val.slice(5, 9); // XXXX
+        if (val.length > 9) formatted += '-' + val.slice(9, 13); // XXXX
+        if (val.length > 13) formatted += '-' + val.slice(13); // Sisa
+
+        setPhone(formatted);
+    };
+
+    // LOGIKA BARU: Formatter Alamat (Auto "Jl.")
+    const handleAddressBlur = () => {
+        let val = address.trim();
+        if (val) {
+            const cleanVal = val.replace(/^(jl\.?|jalan|jln\.?)\s*/i, '');
+            const formattedName = cleanVal.charAt(0).toUpperCase() + cleanVal.slice(1);
+            setAddress(`Jl. ${formattedName}`);
+        }
+        validateForm();
     };
 
     const handlePackageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -153,7 +234,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, assets, onSave, o
         } else {
             setEmailError('');
         }
-        if (address && address.trim().length < 10) {
+        if (address && address.trim().length < 5) {
             setAddressError('Alamat terlalu pendek, harap isi lebih lengkap.');
             isValid = false;
         } else {
@@ -230,7 +311,13 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, assets, onSave, o
     const ActionButtons: React.FC<{ formId?: string }> = ({ formId }) => (
         <>
             <button type="button" onClick={onCancel} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Batal</button>
-            <button type="submit" form={formId} disabled={isLoading} className="inline-flex items-center justify-center px-6 py-2.5 text-sm font-semibold text-white transition-all duration-200 rounded-lg shadow-sm bg-tm-primary hover:bg-tm-primary-hover disabled:bg-tm-primary/70">
+            <button 
+                type="submit" 
+                form={formId} 
+                disabled={isLoading || !isFormValid} 
+                className={`inline-flex items-center justify-center px-6 py-2.5 text-sm font-semibold text-white transition-all duration-200 rounded-lg shadow-sm 
+                ${isLoading || !isFormValid ? 'bg-gray-400 cursor-not-allowed' : 'bg-tm-primary hover:bg-tm-primary-hover'}`}
+            >
                 {isLoading && <SpinnerIcon className="w-4 h-4 mr-2" />}
                 {customer ? 'Simpan Perubahan' : 'Tambah Pelanggan'}
             </button>
@@ -239,15 +326,18 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, assets, onSave, o
 
     return (
         <>
-            <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+            {/* REFACTOR: Added 'pb-32' to ensure content is not hidden behind FloatingActionBar on mobile */}
+            <form id={formId} onSubmit={handleSubmit} className="space-y-4 pb-32">
                  <FormSection title="Informasi Kontak" icon={<UsersIcon className="w-6 h-6 mr-3 text-tm-primary" />}>
                      <div className="md:col-span-2">
                         <label htmlFor="customerName" className="block text-sm font-medium text-gray-700">Nama Pelanggan</label>
-                        <input type="text" id="customerName" value={name} onChange={e => setName(e.target.value)} required className="block w-full px-3 py-2 mt-1 text-gray-900 placeholder:text-gray-400 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-tm-accent focus:border-tm-accent sm:text-sm" />
+                        <input type="text" id="customerName" value={name} onChange={handleNameChange} required className="block w-full px-3 py-2 mt-1 text-gray-900 placeholder:text-gray-400 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-tm-accent focus:border-tm-accent sm:text-sm" />
+                        <p className="mt-1 text-xs text-gray-500">Huruf awal setiap kata otomatis kapital.</p>
                     </div>
                     <div>
-                        <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-700">Telepon</label>
-                        <input type="tel" id="customerPhone" value={phone} onChange={handlePhoneChange} required className="block w-full px-3 py-2 mt-1 text-gray-900 placeholder:text-gray-400 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-tm-accent focus:border-tm-accent sm:text-sm" placeholder="+62..." />
+                        <label htmlFor="customerPhone" className="block text-sm font-medium text-gray-700">Telepon (Auto Format)</label>
+                        <input type="tel" id="customerPhone" value={phone} onChange={handlePhoneChange} required className="block w-full px-3 py-2 mt-1 text-gray-900 placeholder:text-gray-400 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-tm-accent focus:border-tm-accent sm:text-sm" placeholder="Contoh: 08123456789" />
+                        <p className="mt-1 text-xs text-gray-500">Otomatis diubah ke format +62-XXX-...</p>
                     </div>
                     <div>
                         <label htmlFor="customerEmail" className="block text-sm font-medium text-gray-700">Email</label>
@@ -258,9 +348,10 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, assets, onSave, o
 
                  <FormSection title="Alamat Lengkap" icon={<CustomerIcon className="w-6 h-6 mr-3 text-tm-primary" />}>
                     <div className="md:col-span-2">
-                        <label htmlFor="customerAddress" className="block text-sm font-medium text-gray-700">Alamat</label>
-                        <textarea id="customerAddress" value={address} onChange={e => setAddress(e.target.value)} onBlur={validateForm} required rows={3} className={`block w-full px-3 py-2 mt-1 text-gray-900 placeholder:text-gray-400 bg-gray-50 border rounded-lg shadow-sm focus:outline-none focus:ring-tm-accent focus:border-tm-accent sm:text-sm ${addressError ? 'border-red-500' : 'border-gray-300'}`} />
+                        <label htmlFor="customerAddress" className="block text-sm font-medium text-gray-700">Alamat (Auto Prefix "Jl.")</label>
+                        <textarea id="customerAddress" value={address} onChange={e => setAddress(e.target.value)} onBlur={handleAddressBlur} required rows={3} className={`block w-full px-3 py-2 mt-1 text-gray-900 placeholder:text-gray-400 bg-gray-50 border rounded-lg shadow-sm focus:outline-none focus:ring-tm-accent focus:border-tm-accent sm:text-sm ${addressError ? 'border-red-500' : 'border-gray-300'}`} placeholder="Nama Jalan, Nomor, RT/RW, Kelurahan..." />
                         {addressError && <p className="mt-1 text-xs text-red-600">{addressError}</p>}
+                        <p className="mt-1 text-xs text-gray-500">Awalan "Jl." akan ditambahkan otomatis jika belum ada.</p>
                     </div>
                 </FormSection>
 
@@ -292,7 +383,7 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, assets, onSave, o
                 
                 <FormSection title="Kelola Aset Terpasang (Perangkat)" icon={<AssetIcon className="w-6 h-6 mr-3 text-tm-primary" />}>
                     <div className="md:col-span-2">
-                        <p className="text-sm text-gray-600 mb-2">Daftar perangkat yang memiliki nomor seri dan dilacak secara individual.</p>
+                        <p className="text-sm text-gray-600 mb-2">Pilih perangkat yang akan dipasang. Hanya perangkat dengan kategori "Installable" yang tersedia.</p>
                         <CustomSelect
                             isSearchable
                             options={availableAssets.filter(a => !assignedAssetIds.includes(a.id)).map(a => ({
@@ -301,24 +392,39 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ customer, assets, onSave, o
                             }))}
                             value={''}
                             onChange={handleAddAsset}
-                            placeholder="Cari dan pilih aset dari gudang untuk dipasang..."
-                            emptyStateMessage="Tidak ada aset tersedia di gudang."
+                            placeholder="Cari dan pilih aset dari gudang..."
+                            emptyStateMessage="Tidak ada aset tersedia (Cek stok atau kategori)."
                         />
-                        <div className="mt-4 space-y-2">
+                        
+                        <div className="mt-4 space-y-3">
                             {assignedAssetIds.map(assetId => {
                                 const asset = assets.find(a => a.id === assetId);
                                 if (!asset) return null;
                                 return (
-                                    <div key={assetId} className="flex items-center justify-between p-2 text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-md">
-                                        <span className="truncate">{asset.name} ({asset.id})</span>
-                                        <button type="button" onClick={() => handleRemoveAsset(assetId)} className="p-1 text-red-500 rounded-full hover:bg-red-100 hover:text-red-700">
+                                    <div key={assetId} className="flex items-start justify-between p-3 text-sm text-gray-700 bg-white border border-gray-200 rounded-lg shadow-sm transition-all hover:border-tm-accent/50">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="font-semibold text-tm-dark">{asset.name}</span>
+                                            <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                                                <span className="bg-gray-100 px-1.5 py-0.5 rounded border">{asset.brand}</span>
+                                                <span className="bg-gray-100 px-1.5 py-0.5 rounded border font-mono">{asset.type}</span>
+                                            </div>
+                                            <div className="flex flex-col gap-0.5 mt-1 text-xs text-gray-600 font-mono">
+                                                <span>ID: {asset.id}</span>
+                                                <span>SN: {asset.serialNumber || '-'}</span>
+                                                {asset.macAddress && <span>MAC: {asset.macAddress}</span>}
+                                            </div>
+                                        </div>
+                                        <button type="button" onClick={() => handleRemoveAsset(assetId)} className="p-1.5 text-red-500 bg-red-50 rounded-full hover:bg-red-100 hover:text-red-700 transition-colors" title="Hapus Aset">
                                             <TrashIcon className="w-4 h-4" />
                                         </button>
                                     </div>
                                 );
                             })}
                             {assignedAssetIds.length === 0 && (
-                                <p className="text-xs text-center text-gray-500 py-2">Belum ada perangkat yang dipasang.</p>
+                                <div className="flex flex-col items-center justify-center p-4 text-gray-400 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                                    <InboxIcon className="w-8 h-8 mb-2 opacity-50" />
+                                    <p className="text-xs">Belum ada perangkat yang dipilih.</p>
+                                </div>
                             )}
                         </div>
                     </div>

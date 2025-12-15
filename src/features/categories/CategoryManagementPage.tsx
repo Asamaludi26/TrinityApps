@@ -1,7 +1,6 @@
 
-
 import React, { useState, useMemo, useEffect } from 'react';
-import { AssetCategory, Division, Asset, User, AssetType, StandardItem } from '../../types';
+import { AssetCategory, Division, Asset, User, AssetType, StandardItem, ItemClassification } from '../../types';
 import Modal from '../../components/ui/Modal';
 import { useNotification } from '../../providers/NotificationProvider';
 import { PencilIcon } from '../../components/icons/PencilIcon';
@@ -19,6 +18,7 @@ import { CustomSelect } from '../../components/ui/CustomSelect';
 import { CustomerIcon } from '../../components/icons/CustomerIcon';
 import { ModelManagementModal } from '../../components/ui/ModelManagementModal';
 import { TypeManagementModal } from '../../components/ui/TypeManagementModal';
+import { BsTools, BsBoxSeam } from 'react-icons/bs';
 
 // Store
 import { useAssetStore } from '../../stores/useAssetStore';
@@ -36,6 +36,7 @@ const CategoryManagementPage: React.FC<CategoryManagementProps> = ({ currentUser
     const divisions = useMasterDataStore((state) => state.divisions);
 
     // --- STATE MANAGEMENT ---
+    const [activeTab, setActiveTab] = useState<'asset' | 'material'>('asset');
     const [expandedCategory, setExpandedCategory] = useState<number | null>(null);
     const [expandedType, setExpandedType] = useState<number | null>(null);
 
@@ -212,20 +213,56 @@ const CategoryManagementPage: React.FC<CategoryManagementProps> = ({ currentUser
                     </button>
                 </div>
             </div>
+
+            <div className="mb-6 border-b border-gray-200">
+                <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                    <button
+                        onClick={() => setActiveTab('asset')}
+                        className={`group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                            activeTab === 'asset'
+                                ? 'border-tm-primary text-tm-primary'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        <BsTools className={`mr-2 h-5 w-5 ${activeTab === 'asset' ? 'text-tm-primary' : 'text-gray-400 group-hover:text-gray-500'}`} />
+                        Device & Tools (Individual)
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('material')}
+                        className={`group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
+                            activeTab === 'material'
+                                ? 'border-tm-primary text-tm-primary'
+                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        <BsBoxSeam className={`mr-2 h-5 w-5 ${activeTab === 'material' ? 'text-tm-primary' : 'text-gray-400 group-hover:text-gray-500'}`} />
+                        Material (Massal)
+                    </button>
+                </nav>
+            </div>
             
             <div className="flex-1 min-h-0 -mx-2 overflow-y-auto custom-scrollbar px-2 space-y-3">
                 {filteredCategories.length > 0 ? (
                     filteredCategories.map(cat => {
+                        // Filter types based on active tab
+                        const displayTypes = cat.types.filter(t => (t.classification || 'asset') === activeTab);
+                        
+                        // Show category if it has matching types OR if it's completely empty (so we can add new types to it)
+                        const showCategory = displayTypes.length > 0 || cat.types.length === 0;
+
+                        if (!showCategory) return null;
+
                         const isExpanded = expandedCategory === cat.id;
                         const assetCount = assets.filter(a => a.category === cat.name).length;
+                        
                         return (
                             <div key={cat.id} className="bg-white rounded-xl border border-gray-200/80 shadow-sm transition-all duration-300">
                                 <div onClick={() => handleCategoryClick(cat.id)} className="flex items-center p-4 cursor-pointer group">
                                     <div className="flex-1">
                                         <p className="font-bold text-lg text-gray-800 group-hover:text-tm-primary">{cat.name}</p>
                                         <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                                            <span><strong className="text-gray-700">{cat.types.length}</strong> Tipe</span>
-                                            <span><strong className="text-gray-700">{assetCount}</strong> Aset</span>
+                                            <span><strong className="text-gray-700">{displayTypes.length}</strong> Tipe</span>
+                                            <span><strong className="text-gray-700">{assetCount}</strong> Item Total</span>
                                             {cat.isCustomerInstallable && <Tooltip text="Dapat dipasang ke pelanggan"><CustomerIcon className="w-4 h-4 text-sky-600" /></Tooltip>}
                                         </div>
                                     </div>
@@ -239,46 +276,73 @@ const CategoryManagementPage: React.FC<CategoryManagementProps> = ({ currentUser
                                 <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[2000px]' : 'max-h-0'}`}>
                                     <div className="pt-2 pb-4 px-4 space-y-2 border-t border-gray-200">
                                         <div className="flex justify-between items-center mb-2">
-                                            <h4 className="text-sm font-semibold text-gray-500">TIPE ASET ({cat.types.length})</h4>
+                                            <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{activeTab === 'asset' ? 'Tipe Aset (Fixed Asset)' : 'Tipe Material (Consumables)'}</h4>
                                             <button onClick={(e) => { e.stopPropagation(); openTypeModal(cat, null); }} className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-white bg-tm-accent rounded-md shadow-sm hover:bg-tm-primary"><PlusIcon className="w-4 h-4" /><span>Tipe Baru</span></button>
                                         </div>
-                                        {cat.types.map(type => {
-                                            const isTypeExpanded = expandedType === type.id;
-                                            return (
-                                                <div key={type.id} className="bg-gray-50/70 rounded-lg border border-gray-200/80">
-                                                    <div onClick={() => handleTypeClick(type.id)} className="flex items-center p-3 cursor-pointer group">
-                                                        <div className="flex-1">
-                                                            <p className="font-semibold text-gray-800">{type.name}</p>
-                                                            <p className="text-xs text-gray-500">{type.standardItems?.length || 0} Model &bull; {assets.filter(a => a.category === cat.name && a.type === type.name).length} Aset</p>
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <button onClick={(e) => { e.stopPropagation(); openTypeModal(cat, type); }} className="p-2 text-gray-500 rounded-full hover:bg-yellow-100 hover:text-yellow-600 text-xs"><PencilIcon className="w-4 h-4"/></button>
-                                                            <button onClick={(e) => { e.stopPropagation(); handleOpenDeleteModal('type', type, cat); }} className="p-2 text-gray-500 rounded-full hover:bg-red-100 hover:text-red-600 text-xs"><TrashIcon className="w-4 h-4"/></button>
-                                                            <ChevronDownIcon className={`w-4 h-4 text-gray-400 transition-transform duration-300 ${isTypeExpanded ? 'rotate-180' : ''}`} />
-                                                        </div>
-                                                    </div>
-                                                    <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isTypeExpanded ? 'max-h-[1000px]' : 'max-h-0'}`}>
-                                                        <div className="pt-2 pb-3 px-3 border-t">
-                                                            <div className="flex justify-between items-center mb-2 px-2">
-                                                                <h5 className="text-xs font-semibold text-gray-500">MODEL STANDAR ({type.standardItems?.length || 0})</h5>
-                                                                <button onClick={(e) => { e.stopPropagation(); openModelModal(cat, type); }} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-white bg-tm-accent/80 rounded hover:bg-tm-accent"><PlusIcon className="w-3 h-3"/><span>Model</span></button>
+                                        
+                                        {displayTypes.length > 0 ? (
+                                            displayTypes.map(type => {
+                                                const isTypeExpanded = expandedType === type.id;
+                                                const isMaterial = type.classification === 'material';
+
+                                                return (
+                                                    <div key={type.id} className="bg-gray-50/70 rounded-lg border border-gray-200/80">
+                                                        <div onClick={() => handleTypeClick(type.id)} className="flex items-center p-3 cursor-pointer group">
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <p className="font-semibold text-gray-800">{type.name}</p>
+                                                                    {isMaterial ? (
+                                                                        <span className="px-1.5 py-0.5 text-[10px] font-bold text-orange-700 bg-orange-100 rounded border border-orange-200 uppercase tracking-wide">Material</span>
+                                                                    ) : (
+                                                                        <span className="px-1.5 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-100 rounded border border-blue-200 uppercase tracking-wide">Aset</span>
+                                                                    )}
+                                                                </div>
+                                                                <p className="text-xs text-gray-500 mt-0.5">
+                                                                    {type.standardItems?.length || 0} Model &bull; {assets.filter(a => a.category === cat.name && a.type === type.name).length} Unit &bull; 
+                                                                    <span className="font-medium ml-1">
+                                                                        {type.trackingMethod === 'bulk' ? `Bulk (${type.unitOfMeasure})` : 'Individual'}
+                                                                    </span>
+                                                                </p>
                                                             </div>
-                                                            <div className="space-y-1">
-                                                                {(type.standardItems || []).map(model => (
-                                                                    <div key={model.id} className="flex items-center justify-between p-2 rounded-md hover:bg-white/80">
-                                                                        <div>
-                                                                            <p className="text-sm font-medium text-gray-800">{model.name}</p>
-                                                                            <p className="text-xs text-gray-500">{model.brand}</p>
+                                                            <div className="flex items-center gap-1">
+                                                                <button onClick={(e) => { e.stopPropagation(); openTypeModal(cat, type); }} className="p-2 text-gray-500 rounded-full hover:bg-yellow-100 hover:text-yellow-600 text-xs"><PencilIcon className="w-4 h-4"/></button>
+                                                                <button onClick={(e) => { e.stopPropagation(); handleOpenDeleteModal('type', type, cat); }} className="p-2 text-gray-500 rounded-full hover:bg-red-100 hover:text-red-600 text-xs"><TrashIcon className="w-4 h-4"/></button>
+                                                                <ChevronDownIcon className={`w-4 h-4 text-gray-400 transition-transform duration-300 ${isTypeExpanded ? 'rotate-180' : ''}`} />
+                                                            </div>
+                                                        </div>
+                                                        <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isTypeExpanded ? 'max-h-[1000px]' : 'max-h-0'}`}>
+                                                            <div className="pt-2 pb-3 px-3 border-t">
+                                                                <div className="flex justify-between items-center mb-2 px-2">
+                                                                    <h5 className="text-xs font-semibold text-gray-500">MODEL STANDAR ({type.standardItems?.length || 0})</h5>
+                                                                    <button onClick={(e) => { e.stopPropagation(); openModelModal(cat, type); }} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold text-white bg-tm-accent/80 rounded hover:bg-tm-accent"><PlusIcon className="w-3 h-3"/><span>Model</span></button>
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    {(type.standardItems || []).map(model => (
+                                                                        <div key={model.id} className="flex items-center justify-between p-2 rounded-md hover:bg-white/80">
+                                                                            <div>
+                                                                                <p className="text-sm font-medium text-gray-800">{model.name}</p>
+                                                                                <p className="text-xs text-gray-500">{model.brand}</p>
+                                                                            </div>
+                                                                            <button onClick={(e) => { e.stopPropagation(); handleOpenDeleteModal('model', model, cat, type); }} className="p-1 text-gray-400 rounded-full hover:bg-red-100 hover:text-red-600"><TrashIcon className="w-3.5 h-3.5"/></button>
                                                                         </div>
-                                                                        <button onClick={(e) => { e.stopPropagation(); handleOpenDeleteModal('model', model, cat, type); }} className="p-1 text-gray-400 rounded-full hover:bg-red-100 hover:text-red-600"><TrashIcon className="w-3.5 h-3.5"/></button>
-                                                                    </div>
-                                                                ))}
+                                                                    ))}
+                                                                    {(type.standardItems || []).length === 0 && (
+                                                                        <p className="text-center text-xs text-gray-400 py-2 italic">Belum ada model.</p>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            )
-                                        })}
+                                                )
+                                            })
+                                        ) : (
+                                            <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg">
+                                                <p className="text-sm text-gray-500">Belum ada tipe {activeTab === 'asset' ? 'aset' : 'material'} di kategori ini.</p>
+                                                <button onClick={(e) => { e.stopPropagation(); openTypeModal(cat, null); }} className="mt-2 text-xs font-semibold text-tm-primary hover:underline">
+                                                    + Tambah Tipe Baru
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -308,6 +372,7 @@ const CategoryManagementPage: React.FC<CategoryManagementProps> = ({ currentUser
                     onClose={() => setTypeModalState({ ...typeModalState, isOpen: false })}
                     parentCategory={typeModalState.category}
                     typeToEdit={typeModalState.typeToEdit}
+                    defaultClassification={activeTab} // Pass active tab as default
                 />
             )}
             
@@ -418,7 +483,7 @@ const CategoryFormModal: React.FC<{
                             <Checkbox id="is-customer-installable" checked={isCustomerInstallable} onChange={e => setIsCustomerInstallable(e.target.checked)} className="mt-1" />
                             <label htmlFor="is-customer-installable" className="cursor-pointer">
                                 <span className="text-sm font-semibold text-gray-800">Dapat dipasang ke pelanggan</span>
-                                <p className="text-xs text-gray-500">Aktifkan jika aset kategori ini boleh diinstal di lokasi pelanggan.</p>
+                                <p className="text-xs text-gray-500">Aktifkan jika aset kategori ini boleh diinstal di lokasi pelanggan (CPE, Kabel).</p>
                             </label>
                         </div>
                     </div>
