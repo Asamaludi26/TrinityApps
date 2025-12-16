@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Page, User, Asset, Division, LoanRequest, LoanRequestStatus, ItemStatus, AssetStatus, Handover, AssetCategory, Notification, LoanItem, ParsedScanResult, AssetReturn, AssetReturnStatus } from '../../../types';
 import { useSortableData, SortConfig } from '../../../hooks/useSortableData';
@@ -255,6 +254,11 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     const handleApplyFilters = () => {
         setFilters(tempFilters);
         setIsFilterPanelOpen(false);
+    };
+
+    const handleRemoveFilter = (key: keyof typeof filters) => {
+        setFilters((prev) => ({ ...prev, [key]: "" }));
+        setTempFilters((prev) => ({ ...prev, [key]: "" }));
     };
 
     useEffect(() => {
@@ -544,7 +548,7 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                     </nav>
                 </div>
                 
-                <div className="p-4 mb-4 bg-white border border-gray-200/80 rounded-xl shadow-md">
+                <div className="p-4 mb-4 bg-white border border-gray-200/80 rounded-xl shadow-md space-y-4">
                     <div className="flex flex-wrap items-center gap-4">
                         <div className="relative flex-grow">
                             <SearchIcon className="absolute w-5 h-5 text-gray-400 transform -translate-y-1/2 top-1/2 left-3" />
@@ -594,6 +598,24 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                             </div>
                         )}
                     </div>
+                    {/* Active Filters Display */}
+                    {activeTab === 'loans' && activeFilterCount > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 animate-fade-in-up">
+                            {filters.status && (
+                                <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-full">
+                                    Status: <span className="font-bold">{filters.status}</span>
+                                    <button onClick={() => handleRemoveFilter('status')} className="p-0.5 ml-1 rounded-full hover:bg-blue-200 text-blue-500"><CloseIcon className="w-3 h-3" /></button>
+                                </span>
+                            )}
+                            {filters.division && (
+                                <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-100 rounded-full">
+                                    Divisi: <span className="font-bold">{filters.division}</span>
+                                    <button onClick={() => handleRemoveFilter('division')} className="p-0.5 ml-1 rounded-full hover:bg-orange-200 text-orange-500"><CloseIcon className="w-3 h-3" /></button>
+                                </span>
+                            )}
+                            <button onClick={handleResetFilters} className="text-xs text-gray-500 hover:text-red-600 hover:underline px-2 py-1">Hapus Semua</button>
+                        </div>
+                    )}
                 </div>
                 <div className="overflow-hidden bg-white border border-gray-200/80 rounded-xl shadow-md">
                     <div className="overflow-x-auto custom-scrollbar">

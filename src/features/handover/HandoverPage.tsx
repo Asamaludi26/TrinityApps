@@ -641,6 +641,11 @@ const ItemHandoverPage: React.FC<ItemHandoverPageProps> = (props) => {
         setFilters(tempFilters);
         setIsFilterPanelOpen(false);
     };
+    
+    const handleRemoveFilter = (key: keyof typeof filters) => {
+        setFilters((prev) => ({ ...prev, [key]: "" }));
+        setTempFilters((prev) => ({ ...prev, [key]: "" }));
+    };
 
     const handleCancelBulkMode = () => {
         setIsBulkSelectMode(false);
@@ -777,9 +782,11 @@ const ItemHandoverPage: React.FC<ItemHandoverPageProps> = (props) => {
                         <div className="relative" ref={filterPanelRef}>
                             <button
                                 onClick={() => { setTempFilters(filters); setIsFilterPanelOpen(p => !p); }}
-                                className="inline-flex items-center justify-center gap-2 w-full h-10 px-4 text-sm font-semibold text-gray-700 transition-all duration-200 bg-white border border-gray-300 rounded-lg shadow-sm sm:w-auto hover:bg-gray-50"
+                                className={`inline-flex items-center justify-center gap-2 w-full h-10 px-4 text-sm font-semibold transition-all duration-200 border rounded-lg shadow-sm sm:w-auto 
+                                    ${activeFilterCount > 0 ? 'bg-tm-light border-tm-accent text-tm-primary' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}
+                                `}
                             >
-                                <FilterIcon className="w-4 h-4" /> <span>Filter</span> {activeFilterCount > 0 && <span className="px-2 py-0.5 text-xs font-bold text-white rounded-full bg-tm-primary">{activeFilterCount}</span>}
+                                <FilterIcon className="w-4 h-4" /> <span>Filter</span> {activeFilterCount > 0 && <span className="px-1.5 py-0.5 text-[10px] font-bold text-white rounded-full bg-tm-primary">{activeFilterCount}</span>}
                             </button>
                             {isFilterPanelOpen && (
                                 <>
@@ -811,6 +818,18 @@ const ItemHandoverPage: React.FC<ItemHandoverPageProps> = (props) => {
                             )}
                         </div>
                     </div>
+                    {/* Active Filter Chips */}
+                    {activeFilterCount > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 animate-fade-in-up">
+                            {filters.status && (
+                                <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-full">
+                                    Status: <span className="font-bold">{filters.status}</span>
+                                    <button onClick={() => handleRemoveFilter('status')} className="p-0.5 ml-1 rounded-full hover:bg-blue-200 text-blue-500"><CloseIcon className="w-3 h-3" /></button>
+                                </span>
+                            )}
+                            <button onClick={handleResetFilters} className="text-xs text-gray-500 hover:text-red-600 hover:underline px-2 py-1">Hapus Semua</button>
+                        </div>
+                    )}
                 </div>
 
                  {isBulkSelectMode && (
