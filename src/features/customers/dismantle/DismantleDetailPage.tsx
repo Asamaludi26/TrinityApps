@@ -1,18 +1,16 @@
+
 import React, { useState, useRef, useMemo } from 'react';
-import { Dismantle, User, ItemStatus, PreviewData, Asset, Customer } from '../../../types';
+import { Dismantle, User, PreviewData, Asset, Customer, ItemStatus } from '../../../types';
 import { DetailPageLayout } from '../../../components/layout/DetailPageLayout';
 import { Letterhead } from '../../../components/ui/Letterhead';
 import { SignatureStamp } from '../../../components/ui/SignatureStamp';
 import { ApprovalStamp } from '../../../components/ui/ApprovalStamp';
 import { ClickableLink } from '../../../components/ui/ClickableLink';
-import { InfoIcon } from '../../../components/icons/InfoIcon';
-import { SpinnerIcon } from '../../../components/icons/SpinnerIcon';
-import { CheckIcon } from '../../../components/icons/CheckIcon';
-import { ChevronsLeftIcon } from '../../../components/icons/ChevronsLeftIcon';
-import { ChevronsRightIcon } from '../../../components/icons/ChevronsRightIcon';
 import { PrintIcon } from '../../../components/icons/PrintIcon';
 import { DownloadIcon } from '../../../components/icons/DownloadIcon';
+import { SpinnerIcon } from '../../../components/icons/SpinnerIcon';
 import { useNotification } from '../../../providers/NotificationProvider';
+import { DismantleStatusSidebar } from './components/DismantleStatusSidebar'; // IMPORTED NEW COMPONENT
 
 interface DismantleDetailPageProps {
     dismantle: Dismantle;
@@ -24,93 +22,6 @@ interface DismantleDetailPageProps {
     onComplete: () => void;
     isLoading: boolean;
 }
-
-const ActionButton: React.FC<{ onClick?: () => void, text: string, icon?: React.FC<{className?:string}>, color: 'primary'|'success'|'danger'|'info'|'secondary', disabled?: boolean }> = ({ onClick, text, icon: Icon, color, disabled }) => {
-    const colors = {
-        primary: "bg-tm-primary hover:bg-tm-primary-hover text-white",
-        success: "bg-success hover:bg-green-700 text-white",
-        danger: "bg-danger hover:bg-red-700 text-white",
-        info: "bg-info hover:bg-blue-700 text-white",
-        secondary: "bg-gray-200 hover:bg-gray-300 text-gray-800",
-    };
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            disabled={disabled}
-            className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg shadow-sm transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed ${colors[color]}`}
-        >
-            {disabled && <SpinnerIcon className="w-4 h-4" />}
-            {Icon && <Icon className="w-4 h-4" />}
-            {text}
-        </button>
-    );
-};
-
-const DismantleStatusIndicator: React.FC<{ status: ItemStatus }> = ({ status }) => {
-    const statusDetails: Record<string, { label: string, className: string }> = {
-        [ItemStatus.COMPLETED]: { label: 'Selesai', className: 'bg-success-light text-success-text' },
-        [ItemStatus.IN_PROGRESS]: { label: 'Menunggu Penerimaan Gudang', className: 'bg-warning-light text-warning-text' },
-    };
-
-    const details = statusDetails[status] || { label: status, className: 'bg-gray-100 text-gray-800' };
-
-    return (
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full ${details.className}`}>
-            {details.label}
-        </span>
-    );
-};
-
-const ActionSidebar: React.FC<DismantleDetailPageProps & { isExpanded: boolean; onToggleVisibility: () => void; }> = ({ dismantle, currentUser, isLoading, onComplete, isExpanded, onToggleVisibility }) => {
-    
-    if (!isExpanded) {
-        return (
-            <div className="flex flex-col items-center pt-4 space-y-4">
-                <button
-                    onClick={onToggleVisibility}
-                    className="flex items-center justify-center w-10 h-10 bg-white border border-gray-300 rounded-full shadow-md text-gray-500 hover:bg-gray-100 hover:text-tm-primary transition-all">
-                    <ChevronsRightIcon className="w-5 h-5" />
-                </button>
-            </div>
-        );
-    }
-
-    const canComplete = dismantle.status === ItemStatus.IN_PROGRESS && (currentUser.role === 'Admin Logistik' || currentUser.role === 'Super Admin');
-
-    return (
-        <div className="p-5 bg-white border border-gray-200/80 rounded-xl shadow-sm">
-            <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                        <InfoIcon className="w-5 h-5 text-gray-400" />
-                        <h3 className="text-base font-semibold text-gray-800">Status & Aksi</h3>
-                    </div>
-                     <div className="mt-2">
-                        <DismantleStatusIndicator status={dismantle.status} />
-                    </div>
-                </div>
-                <button
-                    onClick={onToggleVisibility}
-                    className="flex items-center justify-center flex-shrink-0 w-8 h-8 text-gray-400 rounded-full hover:bg-gray-100 hover:text-gray-800">
-                    <ChevronsLeftIcon className="w-5 h-5" />
-                </button>
-            </div>
-            
-            <div className="mt-4 pt-4 border-t">
-                {canComplete ? (
-                     <ActionButton onClick={onComplete} disabled={isLoading} text="Acknowledge & Complete" icon={CheckIcon} color="success" />
-                ) : (
-                    <div className="text-center p-4 bg-gray-50/70 border border-gray-200/60 rounded-lg">
-                        <CheckIcon className="w-10 h-10 mx-auto mb-3 text-success" />
-                        <p className="text-sm font-semibold text-gray-800">Proses Selesai</p>
-                        <p className="text-xs text-gray-500 mt-1">Dismantle ini telah selesai diproses.</p>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
 
 const DismantleDetailPage: React.FC<DismantleDetailPageProps> = (props) => {
     const { dismantle, onShowPreview, assets, customers } = props;
@@ -161,7 +72,7 @@ const DismantleDetailPage: React.FC<DismantleDetailPageProps> = (props) => {
             }
             mainColClassName={isActionSidebarExpanded ? 'lg:col-span-8' : 'lg:col-span-11'}
             asideColClassName={isActionSidebarExpanded ? 'lg:col-span-4' : 'lg:col-span-1'}
-            aside={<ActionSidebar {...props} isExpanded={isActionSidebarExpanded} onToggleVisibility={() => setIsActionSidebarExpanded(p => !p)} />}
+            aside={<DismantleStatusSidebar {...props} isExpanded={isActionSidebarExpanded} onToggleVisibility={() => setIsActionSidebarExpanded(p => !p)} />}
         >
             <div ref={printRef} className="p-8 bg-white border border-gray-200/80 rounded-xl shadow-sm space-y-8">
                 <Letterhead />

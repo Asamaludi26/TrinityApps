@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User, Asset, AssetStatus, Division, LoanItem } from '../../../types';
 import DatePicker from '../../../components/ui/DatePicker';
@@ -10,6 +12,8 @@ import { InfoIcon } from '../../../components/icons/InfoIcon';
 import { AssetIcon } from '../../../components/icons/AssetIcon';
 import { TrashIcon } from '../../../components/icons/TrashIcon';
 import { Checkbox } from '../../../components/ui/Checkbox';
+import { useAssetStore } from '../../../stores/useAssetStore'; // IMPORT Store
+import { BsLightningFill, BsBoxSeam } from 'react-icons/bs'; // NEW Icons
 
 interface LoanRequestFormProps {
     availableAssets: Asset[];
@@ -32,6 +36,9 @@ const LoanRequestForm: React.FC<LoanRequestFormProps> = ({ availableAssets, onSa
         isIndefinite: boolean;
     };
     
+    // Store access to check categories for Material/Bulk logic
+    const assetCategories = useAssetStore((state) => state.categories);
+
     const [loanItems, setLoanItems] = useState<LoanItemForm[]>([
         { tempId: Date.now(), modelKey: '', quantity: 1, keterangan: '', returnDate: null, isIndefinite: false }
     ]);
@@ -82,11 +89,11 @@ const LoanRequestForm: React.FC<LoanRequestFormProps> = ({ availableAssets, onSa
     }, [openDropdownId, loanItems]);
 
     const availableModels = useMemo(() => {
-        const models = new Map<string, { name: string; brand: string; count: number }>();
+        const models = new Map<string, { name: string; brand: string; count: number; category: string; type: string }>();
         availableAssets.forEach(asset => {
             const key = `${asset.name}|${asset.brand}`;
             if (!models.has(key)) {
-                models.set(key, { name: asset.name, brand: asset.brand, count: 0 });
+                models.set(key, { name: asset.name, brand: asset.brand, count: 0, category: asset.category, type: asset.type });
             }
             models.get(key)!.count++;
         });
@@ -95,12 +102,21 @@ const LoanRequestForm: React.FC<LoanRequestFormProps> = ({ availableAssets, onSa
 
     const getAvailableOptions = (currentItemKey: string) => {
         const selectedKeys = loanItems.map(item => item.modelKey).filter(key => key !== currentItemKey);
+        
         return availableModels
             .filter(model => !selectedKeys.includes(`${model.name}|${model.brand}`))
-            .map(model => ({
-                value: `${model.name}|${model.brand}`,
-                label: `${model.name} - ${model.brand}`
-            }));
+            .map(model => {
+                const category = assetCategories.find(c => c.name === model.category);
+                const type = category?.types.find(t => t.name === model.type);
+                const isMaterial = type?.trackingMethod === 'bulk';
+                
+                return {
+                    value: `${model.name}|${model.brand}`,
+                    label: `${model.name} - ${model.brand}`,
+                    isMaterial,
+                    count: model.count
+                };
+            });
     };
     
     const getFilteredOptions = (currentItemKey: string, input: string) => {
@@ -194,7 +210,6 @@ const LoanRequestForm: React.FC<LoanRequestFormProps> = ({ availableAssets, onSa
             }
             return item;
         }));
-        // Clear selection after applying for better UX
         setSelectedItemIds([]);
     };
 
@@ -361,8 +376,20 @@ const LoanRequestForm: React.FC<LoanRequestFormProps> = ({ availableAssets, onSa
                                                     <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto custom-scrollbar">
                                                         <ul>
                                                             {filteredOptions.length > 0 ? filteredOptions.map(opt => (
-                                                                <li key={opt.value} onClick={() => handleModelSelect(item.tempId, opt.value)} className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer hover:bg-blue-50 hover:text-tm-primary">
-                                                                    {opt.label} (Stok: {availableModels.find(m => `${m.name}|${m.brand}` === opt.value)?.count})
+                                                                <li key={opt.value} onClick={() => handleModelSelect(item.tempId, opt.value)} className="px-4 py-2.5 text-sm text-gray-800 cursor-pointer hover:bg-blue-50 hover:text-tm-primary flex items-center justify-between">
+                                                                    <span>{opt.label}</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        {opt.isMaterial ? (
+                                                                            <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                                                                <BsLightningFill className="w-2.5 h-2.5" /> Bulk
+                                                                            </span>
+                                                                        ) : (
+                                                                             <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                                                                <BsBoxSeam className="w-2.5 h-2.5" /> Unit
+                                                                            </span>
+                                                                        )}
+                                                                        <span className="text-xs text-gray-500 font-semibold bg-gray-100 px-1.5 py-0.5 rounded">Stok: {opt.count}</span>
+                                                                    </div>
                                                                 </li>
                                                             )) : (
                                                                 <li className="px-4 py-4 text-sm text-center text-gray-500">Tidak ada aset tersedia.</li>
@@ -442,3 +469,4 @@ const LoanRequestForm: React.FC<LoanRequestFormProps> = ({ availableAssets, onSa
 };
 
 export default LoanRequestForm;
+

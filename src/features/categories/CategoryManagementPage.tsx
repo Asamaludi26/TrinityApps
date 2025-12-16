@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { AssetCategory, Division, Asset, User, AssetType, StandardItem, ItemClassification } from '../../types';
 import Modal from '../../components/ui/Modal';
@@ -405,7 +406,7 @@ const CategoryManagementPage: React.FC<CategoryManagementProps> = ({ currentUser
     );
 };
 
-const CategoryFormModal: React.FC<{
+export const CategoryFormModal: React.FC<{
     category: AssetCategory | null;
     divisions: Division[];
     onSave: (formData: Omit<AssetCategory, 'id'|'types'>) => void;
@@ -561,3 +562,4 @@ const CategoryFormModal: React.FC<{
 };
 
 export default CategoryManagementPage;
+

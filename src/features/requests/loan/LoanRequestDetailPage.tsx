@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { LoanRequest, User, Asset, Division, PreviewData, LoanRequestStatus, AssetStatus, AssetCategory, ParsedScanResult } from '../../../types';
 import { DetailPageLayout } from '../../../components/layout/DetailPageLayout';
@@ -23,6 +24,7 @@ import { QrCodeIcon } from '../../../components/icons/QrCodeIcon';
 import Modal from '../../../components/ui/Modal';
 import { TrashIcon } from '../../../components/icons/TrashIcon';
 import { PencilIcon } from '../../../components/icons/PencilIcon';
+import { BsLightningFill, BsBoxSeam } from 'react-icons/bs';
 
 interface LoanRequestDetailPageProps {
     loanRequest: LoanRequest;
@@ -95,12 +97,13 @@ type ItemState = {
 const AssignmentPanel: React.FC<{
     request: LoanRequest;
     availableAssets: Asset[];
+    assetCategories: AssetCategory[];
     onConfirm: (result: { itemStatuses: any, assignedAssetIds: any }) => void;
     onCancel: () => void;
     setIsGlobalScannerOpen: (isOpen: boolean) => void;
     setScanContext: (context: 'global' | 'form') => void;
     setFormScanCallback: (callback: ((data: ParsedScanResult) => void) | null) => void;
-}> = ({ request, availableAssets, onConfirm, onCancel, setIsGlobalScannerOpen, setScanContext, setFormScanCallback }) => {
+}> = ({ request, availableAssets, assetCategories, onConfirm, onCancel, setIsGlobalScannerOpen, setScanContext, setFormScanCallback }) => {
 
     const [itemsState, setItemsState] = useState<Record<number, ItemState>>({});
     const addNotification = useNotification();
@@ -163,7 +166,6 @@ const AssignmentPanel: React.FC<{
             else if (data.serialNumber) assetIdToSet = availableAssets.find(a => a.serialNumber === data.serialNumber)?.id;
 
             if (assetIdToSet) {
-                 // Explicitly typing s as ItemState to fix "Property does not exist on type 'unknown'" error
                  const allAssigned = Object.values(itemsState).flatMap((s: ItemState) => s.assignedAssets);
                  if (allAssigned.includes(assetIdToSet)) {
                      addNotification('Aset sudah dipilih untuk slot lain.', 'error');
@@ -184,13 +186,17 @@ const AssignmentPanel: React.FC<{
         const resultAssignedAssets: Record<number, string[]> = {};
 
         for (const item of request.items) {
-            // Explicit typing to ensure properties are accessible
             const itemState: ItemState | undefined = itemsState[item.id];
             if (!itemState) {
                 addNotification(`Data internal untuk item ${item.itemName} tidak ditemukan. Silakan coba lagi.`, 'error');
                 isValid = false;
                 break;
             }
+
+            const matchingAssets = availableAssets.filter(a => a.name === item.itemName && a.brand === item.brand);
+            const category = assetCategories.find(c => c.name === matchingAssets[0]?.category);
+            const type = category?.types.find(t => t.name === matchingAssets[0]?.type);
+            const isBulk = type?.trackingMethod === 'bulk';
 
             const isReduced = itemState.approvedQty < item.quantity;
             
@@ -200,17 +206,32 @@ const AssignmentPanel: React.FC<{
                 break;
             }
 
+            // Validasi Aset (Hanya jika bukan Bulk/Material)
             if (itemState.approvedQty > 0) {
-                if (itemState.assignedAssets.some(a => !a)) {
-                    addNotification(`Harap pilih aset untuk semua slot yang disetujui pada ${item.itemName}.`, 'error');
-                    isValid = false;
-                    break;
-                }
-                const uniqueAssets = new Set(itemState.assignedAssets);
-                if (uniqueAssets.size !== itemState.assignedAssets.length) {
-                     addNotification(`Terdeteksi duplikasi aset pada ${item.itemName}.`, 'error');
-                     isValid = false;
-                     break;
+                if (isBulk) {
+                    // Logic Auto-Assign untuk Bulk
+                    if (matchingAssets.length < itemState.approvedQty) {
+                         addNotification(`Stok ${item.itemName} tidak mencukupi (Butuh ${itemState.approvedQty}, Ada ${matchingAssets.length}).`, 'error');
+                         isValid = false;
+                         break;
+                    }
+                    // Ambil N aset pertama dari stok
+                    resultAssignedAssets[item.id] = matchingAssets.slice(0, itemState.approvedQty).map(a => a.id);
+
+                } else {
+                    // Logic Manual Select untuk Individual Asset
+                    if (itemState.assignedAssets.some(a => !a)) {
+                        addNotification(`Harap pilih aset untuk semua slot yang disetujui pada ${item.itemName}.`, 'error');
+                        isValid = false;
+                        break;
+                    }
+                    const uniqueAssets = new Set(itemState.assignedAssets);
+                    if (uniqueAssets.size !== itemState.assignedAssets.length) {
+                         addNotification(`Terdeteksi duplikasi aset pada ${item.itemName}.`, 'error');
+                         isValid = false;
+                         break;
+                    }
+                    resultAssignedAssets[item.id] = itemState.assignedAssets;
                 }
             }
 
@@ -223,10 +244,6 @@ const AssignmentPanel: React.FC<{
                 reason: itemState.reason,
                 approvedQuantity: itemState.approvedQty
             };
-            
-            if (itemState.approvedQty > 0) {
-                resultAssignedAssets[item.id] = itemState.assignedAssets;
-            }
         }
 
         if (isValid) {
@@ -256,8 +273,14 @@ const AssignmentPanel: React.FC<{
                     const state = itemsState[item.id] || { approvedQty: item.quantity, reason: '', assignedAssets: [] };
                     const isReduced = state.approvedQty < item.quantity;
                     const matchingAssets = availableAssets.filter(a => a.name === item.itemName && a.brand === item.brand);
-                    // Explicit type for s
                     const allCurrentlyAssigned = Object.values(itemsState).flatMap((s: ItemState) => s.assignedAssets).filter(Boolean);
+
+                    // Check if Bulk
+                    const sampleAsset = matchingAssets[0];
+                    const category = assetCategories.find(c => c.name === sampleAsset?.category);
+                    const type = category?.types.find(t => t.name === sampleAsset?.type);
+                    const isBulk = type?.trackingMethod === 'bulk';
+                    const unitLabel = type?.unitOfMeasure || 'unit';
 
                     return (
                         <div key={item.id} className="border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow bg-white relative">
@@ -266,11 +289,22 @@ const AssignmentPanel: React.FC<{
                                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                                     {/* Left: Item Info */}
                                     <div className="flex-1 min-w-0">
-                                        <h4 className="font-bold text-lg text-gray-900">{item.itemName}</h4>
+                                        <div className="flex items-center gap-2">
+                                            <h4 className="font-bold text-lg text-gray-900">{item.itemName}</h4>
+                                            {isBulk ? (
+                                                <span className="px-2 py-0.5 text-[10px] font-bold text-orange-700 bg-orange-100 rounded-full flex items-center gap-1">
+                                                    <BsLightningFill className="w-3 h-3"/> Material
+                                                </span>
+                                            ) : (
+                                                 <span className="px-2 py-0.5 text-[10px] font-bold text-blue-700 bg-blue-100 rounded-full flex items-center gap-1">
+                                                    <BsBoxSeam className="w-3 h-3"/> Device
+                                                </span>
+                                            )}
+                                        </div>
                                         <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
                                             <span className="px-2 py-0.5 bg-gray-100 rounded text-gray-600 font-medium">{item.brand}</span>
                                             <span>&bull;</span>
-                                            <span>Diminta: <strong className="text-gray-900">{item.quantity} unit</strong></span>
+                                            <span>Diminta: <strong className="text-gray-900">{item.quantity} {unitLabel}</strong></span>
                                         </div>
                                         {item.keterangan && (
                                             <p className="mt-2 text-sm text-gray-500 italic border-l-2 border-gray-300 pl-2">"{item.keterangan}"</p>
@@ -295,7 +329,7 @@ const AssignmentPanel: React.FC<{
                                                     onFocus={(e) => e.target.select()}
                                                     className="w-20 h-9 text-center text-sm font-semibold text-gray-900 bg-white border border-gray-300 rounded-md focus:ring-2 focus:ring-tm-primary focus:border-tm-primary outline-none transition-shadow"
                                                 />
-                                                <span className="ml-2 text-sm font-medium text-gray-500">unit</span>
+                                                <span className="ml-2 text-sm font-medium text-gray-500">{unitLabel}</span>
                                              </div>
                                          </div>
                                          <div className="h-10 w-px bg-gray-300 mx-2"></div>
@@ -317,44 +351,61 @@ const AssignmentPanel: React.FC<{
                                     <div className="mb-3 flex items-center justify-between">
                                         <h5 className="text-sm font-bold text-gray-700 flex items-center gap-2">
                                             <InfoIcon className="w-4 h-4 text-tm-primary"/>
-                                            Pilih {state.approvedQty} Unit Aset
+                                            {isBulk ? 'Alokasi Stok Material' : `Pilih ${state.approvedQty} Unit Aset`}
                                         </h5>
-                                        <span className="text-xs text-gray-500">Stok Tersedia: {matchingAssets.length}</span>
+                                        <span className="text-xs text-gray-500">Stok Tersedia: {matchingAssets.length} {unitLabel}</span>
                                     </div>
                                     
-                                    <div className="grid grid-cols-1 gap-4">
-                                        {Array.from({length: state.approvedQty}).map((_, idx) => {
-                                            const currentVal = state.assignedAssets[idx] || '';
-                                            const options = matchingAssets
-                                                .filter(a => !allCurrentlyAssigned.includes(a.id) || a.id === currentVal)
-                                                .map(a => ({ value: a.id, label: `${a.name} (${a.id}) ${a.serialNumber ? `- SN: ${a.serialNumber}` : ''}` }));
+                                    {isBulk ? (
+                                        <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-3">
+                                            <BsLightningFill className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
+                                            <div className="text-sm text-orange-800">
+                                                <p className="font-semibold">Penugasan Otomatis</p>
+                                                <p className="mt-1">
+                                                    Item ini adalah material/bulk. Sistem akan secara otomatis mengalokasikan <strong>{state.approvedQty} {unitLabel}</strong> dari stok yang tersedia. Tidak perlu memilih ID aset satu per satu.
+                                                </p>
+                                                {matchingAssets.length < state.approvedQty && (
+                                                     <p className="mt-2 text-red-600 font-bold flex items-center gap-1">
+                                                        <CloseIcon className="w-4 h-4"/> Stok tidak mencukupi! Hanya ada {matchingAssets.length} {unitLabel}.
+                                                     </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 gap-4">
+                                            {Array.from({length: state.approvedQty}).map((_, idx) => {
+                                                const currentVal = state.assignedAssets[idx] || '';
+                                                const options = matchingAssets
+                                                    .filter(a => !allCurrentlyAssigned.includes(a.id) || a.id === currentVal)
+                                                    .map(a => ({ value: a.id, label: `${a.name} (${a.id}) ${a.serialNumber ? `- SN: ${a.serialNumber}` : ''}` }));
 
-                                            return (
-                                                <div key={idx} className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded-full text-xs font-bold text-gray-500 shadow-sm">
-                                                        {idx + 1}
+                                                return (
+                                                    <div key={idx} className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 flex items-center justify-center bg-white border border-gray-300 rounded-full text-xs font-bold text-gray-500 shadow-sm">
+                                                            {idx + 1}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <CustomSelect 
+                                                                options={options}
+                                                                value={currentVal}
+                                                                onChange={(val) => handleAssetSelect(item.id, idx, val)}
+                                                                isSearchable
+                                                                placeholder={`Pilih Aset #${idx+1}`}
+                                                                emptyStateMessage="Stok tidak tersedia"
+                                                            />
+                                                        </div>
+                                                        <button 
+                                                            onClick={() => handleStartScan(item.id, idx)}
+                                                            className="p-2 bg-white border border-gray-300 rounded-lg hover:bg-blue-50 text-gray-600 hover:text-tm-primary hover:border-tm-primary transition-all shadow-sm"
+                                                            title="Scan QR Code"
+                                                        >
+                                                            <QrCodeIcon className="w-5 h-5" />
+                                                        </button>
                                                     </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <CustomSelect 
-                                                            options={options}
-                                                            value={currentVal}
-                                                            onChange={(val) => handleAssetSelect(item.id, idx, val)}
-                                                            isSearchable
-                                                            placeholder={`Pilih Aset #${idx+1}`}
-                                                            emptyStateMessage="Stok tidak tersedia"
-                                                        />
-                                                    </div>
-                                                    <button 
-                                                        onClick={() => handleStartScan(item.id, idx)}
-                                                        className="p-2 bg-white border border-gray-300 rounded-lg hover:bg-blue-50 text-gray-600 hover:text-tm-primary hover:border-tm-primary transition-all shadow-sm"
-                                                        title="Scan QR Code"
-                                                    >
-                                                        <QrCodeIcon className="w-5 h-5" />
-                                                    </button>
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="bg-red-50 p-4 border-t border-red-100 flex items-center gap-3 text-red-800">
@@ -616,7 +667,7 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                     <Letterhead />
                     <div className="text-center">
                         <h3 className="text-xl font-bold uppercase text-tm-dark">Surat Permintaan Peminjaman Aset</h3>
-                        <p className="text-sm text-tm-secondary">Nomor: ${loanRequest.id}</p>
+                        <p className="text-sm text-tm-secondary">Nomor: {loanRequest.id}</p>
                     </div>
 
                     <section><dl className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2 text-sm">
@@ -748,7 +799,8 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                     <div ref={panelRef}>
                         <AssignmentPanel 
                             request={loanRequest} 
-                            availableAssets={availableAssetsForLoan} 
+                            availableAssets={availableAssetsForLoan}
+                            assetCategories={assetCategories} 
                             onConfirm={handleAssignmentConfirm} 
                             onCancel={() => setIsAssignmentPanelOpen(false)}
                             setIsGlobalScannerOpen={setIsGlobalScannerOpen}
@@ -775,3 +827,4 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
 };
 
 export default LoanRequestDetailPage;
+

@@ -1,6 +1,5 @@
 
-
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Page, User, Asset, Division, LoanRequest, LoanRequestStatus, ItemStatus, AssetStatus, Handover, AssetCategory, Notification, LoanItem, ParsedScanResult, AssetReturn, AssetReturnStatus } from '../../../types';
 import { useSortableData, SortConfig } from '../../../hooks/useSortableData';
 import { useNotification } from '../../../providers/NotificationProvider';
@@ -12,6 +11,9 @@ import { SortIcon } from '../../../components/icons/SortIcon';
 import { SortAscIcon } from '../../../components/icons/SortAscIcon';
 import { SortDescIcon } from '../../../components/icons/SortDescIcon';
 import { EyeIcon } from '../../../components/icons/EyeIcon';
+import { FilterIcon } from '../../../components/icons/FilterIcon';
+import { CloseIcon } from '../../../components/icons/CloseIcon';
+import { CustomSelect } from '../../../components/ui/CustomSelect';
 import LoanRequestForm from './LoanRequestForm';
 import LoanRequestDetailPage from './LoanRequestDetailPage';
 import { generateDocumentNumber } from '../../../utils/documentNumberGenerator';
@@ -213,7 +215,14 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     const [activeTab, setActiveTab] = useState<'loans' | 'returns'>('loans');
     const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [filters, setFilters] = useState({ status: '' });
+    
+    // Filter State
+    const initialFilterState = { status: '', division: '' };
+    const [filters, setFilters] = useState(initialFilterState);
+    const [tempFilters, setTempFilters] = useState(filters);
+    const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+    const filterPanelRef = useRef<HTMLDivElement>(null);
+
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
     const [isLoading, setIsLoading] = useState(false);
@@ -221,6 +230,32 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
 
     const addNotificationUI = useNotification();
+
+    // Close Filter Panel on Click Outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (filterPanelRef.current && !filterPanelRef.current.contains(event.target as Node)) {
+                setIsFilterPanelOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => { document.removeEventListener("mousedown", handleClickOutside); };
+    }, [filterPanelRef]);
+
+    const activeFilterCount = useMemo(() => {
+        return Object.values(filters).filter(Boolean).length;
+    }, [filters]);
+
+    const handleResetFilters = () => {
+        setFilters(initialFilterState);
+        setTempFilters(initialFilterState);
+        setIsFilterPanelOpen(false);
+    };
+
+    const handleApplyFilters = () => {
+        setFilters(tempFilters);
+        setIsFilterPanelOpen(false);
+    };
 
     useEffect(() => {
         if (highlightedItemId) {
@@ -260,12 +295,18 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
         if (!['Admin Logistik', 'Super Admin'].includes(currentUser.role)) {
             tempRequests = tempRequests.filter(req => req.requester === currentUser.name);
         }
-        return tempRequests.filter(req => {
-            const searchLower = searchQuery.toLowerCase();
-            return req.id.toLowerCase().includes(searchLower) ||
-                   req.requester.toLowerCase().includes(searchLower) ||
-                   req.items.some(i => i.itemName.toLowerCase().includes(searchLower));
-        }).filter(req => filters.status ? req.status === filters.status : true);
+        return tempRequests
+            .filter(req => {
+                const searchLower = searchQuery.toLowerCase();
+                return req.id.toLowerCase().includes(searchLower) ||
+                       req.requester.toLowerCase().includes(searchLower) ||
+                       req.items.some(i => i.itemName.toLowerCase().includes(searchLower));
+            })
+            .filter(req => {
+                if (filters.status && req.status !== filters.status) return false;
+                if (filters.division && req.division !== filters.division) return false;
+                return true;
+            });
     }, [loanRequests, currentUser, searchQuery, filters]);
 
     const { items: sortedRequests, requestSort, sortConfig } = useSortableData(filteredRequests, { key: 'requestDate', direction: 'descending' });
@@ -503,7 +544,57 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                     </nav>
                 </div>
                 
-                <div className="p-4 mb-4 bg-white border border-gray-200/80 rounded-xl shadow-md"><div className="relative"><SearchIcon className="absolute w-5 h-5 text-gray-400 transform -translate-y-1/2 top-1/2 left-3" /><input type="text" placeholder="Cari ID, pemohon, aset..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-10 py-2 pl-10 pr-4 text-sm text-gray-900 bg-gray-50 border border-gray-300 rounded-lg focus:ring-tm-accent focus:border-tm-accent" /></div></div>
+                <div className="p-4 mb-4 bg-white border border-gray-200/80 rounded-xl shadow-md">
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="relative flex-grow">
+                            <SearchIcon className="absolute w-5 h-5 text-gray-400 transform -translate-y-1/2 top-1/2 left-3" />
+                            <input type="text" placeholder="Cari ID, pemohon, aset..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-10 py-2 pl-10 pr-4 text-sm text-gray-900 bg-gray-50 border border-gray-300 rounded-lg focus:ring-tm-accent focus:border-tm-accent" />
+                        </div>
+                        {activeTab === 'loans' && (
+                            <div className="relative" ref={filterPanelRef}>
+                                <button
+                                    onClick={() => { setTempFilters(filters); setIsFilterPanelOpen(p => !p); }}
+                                    className="inline-flex items-center justify-center gap-2 w-full h-10 px-4 text-sm font-semibold text-gray-700 transition-all duration-200 bg-white border border-gray-300 rounded-lg shadow-sm sm:w-auto hover:bg-gray-50"
+                                >
+                                    <FilterIcon className="w-4 h-4" /> <span>Filter</span> {activeFilterCount > 0 && <span className="px-2 py-0.5 text-xs font-bold text-white rounded-full bg-tm-primary">{activeFilterCount}</span>}
+                                </button>
+                                {isFilterPanelOpen && (
+                                    <>
+                                        <div onClick={() => setIsFilterPanelOpen(false)} className="fixed inset-0 z-20 bg-black/25 sm:hidden" />
+                                        <div className="fixed top-32 inset-x-4 z-30 origin-top rounded-xl border border-gray-200 bg-white shadow-lg sm:absolute sm:top-full sm:inset-x-auto sm:right-0 sm:mt-2 sm:w-72">
+                                            <div className="flex items-center justify-between p-4 border-b">
+                                                <h3 className="text-lg font-semibold text-gray-800">Filter</h3>
+                                                <button onClick={() => setIsFilterPanelOpen(false)} className="p-1 text-gray-400 rounded-full hover:bg-gray-100"><CloseIcon className="w-5 h-5"/></button>
+                                            </div>
+                                            <div className="p-4 space-y-4">
+                                                <div>
+                                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+                                                    <CustomSelect 
+                                                        options={[{ value: '', label: 'Semua Status' }, ...Object.values(LoanRequestStatus).map(s => ({ value: s, label: s }))]} 
+                                                        value={tempFilters.status} 
+                                                        onChange={v => setTempFilters(f => ({ ...f, status: v }))} 
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Divisi</label>
+                                                    <CustomSelect 
+                                                        options={[{ value: '', label: 'Semua Divisi' }, ...divisions.map(d => ({ value: d.name, label: d.name }))]} 
+                                                        value={tempFilters.division} 
+                                                        onChange={v => setTempFilters(f => ({ ...f, division: v }))} 
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 border-t">
+                                                <button onClick={handleResetFilters} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Reset</button>
+                                                <button onClick={handleApplyFilters} className="px-4 py-2 text-sm font-semibold text-white bg-tm-primary rounded-lg shadow-sm hover:bg-tm-primary-hover">Terapkan</button>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
                 <div className="overflow-hidden bg-white border border-gray-200/80 rounded-xl shadow-md">
                     <div className="overflow-x-auto custom-scrollbar">
                         {activeTab === 'loans' ? (

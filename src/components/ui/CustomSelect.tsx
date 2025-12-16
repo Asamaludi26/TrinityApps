@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDownIcon } from '../icons/ChevronDownIcon';
 import { CheckIcon } from '../icons/CheckIcon';
@@ -22,6 +23,9 @@ interface CustomSelectProps {
     onEmptyStateClick?: () => void;
     direction?: 'up' | 'down';
     isSearchable?: boolean;
+    // New props for sticky footer action
+    actionLabel?: string;
+    onActionClick?: () => void;
 }
 
 export const CustomSelect: React.FC<CustomSelectProps> = ({ 
@@ -35,6 +39,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     onEmptyStateClick,
     direction = 'down',
     isSearchable = false,
+    actionLabel,
+    onActionClick
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -128,6 +134,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                         </div>
                     </div>
                 )}
+                
                 <div className="overflow-y-auto max-h-56 custom-scrollbar">
                     {filteredOptions.length > 0 ? (
                         <ul>
@@ -173,6 +180,24 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                         </div>
                     )}
                 </div>
+
+                {/* Sticky Action Button in Dropdown Footer */}
+                {actionLabel && onActionClick && (
+                    <div className="p-2 border-t border-gray-100 bg-gray-50">
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsOpen(false);
+                                onActionClick();
+                            }}
+                            className="flex items-center justify-center w-full gap-2 px-3 py-2 text-xs font-semibold text-tm-primary bg-white border border-gray-200 rounded-md hover:bg-blue-50 hover:border-blue-200 transition-colors shadow-sm"
+                        >
+                            <PlusIcon className="w-3.5 h-3.5" />
+                            {actionLabel}
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );
