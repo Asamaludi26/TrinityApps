@@ -1,8 +1,7 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Asset, AssetStatus, Page, PreviewData, AssetCategory, Handover, User, AssetCondition, Division, LoanRequest, LoanRequestStatus, Request, StockMovement } from '../../types';
+import { Asset, AssetStatus, Page, PreviewData, User, AssetCondition, StockMovement } from '../../types';
 import { useSortableData, SortConfig } from '../../hooks/useSortableData';
-// ... imports existing ...
 import { PaginationControls } from '../../components/ui/PaginationControls';
 import { SearchIcon } from '../../components/icons/SearchIcon';
 import { InboxIcon } from '../../components/icons/InboxIcon';
@@ -33,14 +32,11 @@ import { JournalCheckIcon } from '../../components/icons/JournalCheckIcon';
 import { SummaryCard } from '../dashboard/components/SummaryCard';
 import { DismantleIcon } from '../../components/icons/DismantleIcon';
 import { SpinnerIcon } from '../../components/icons/SpinnerIcon';
-import Modal from '../../components/ui/Modal'; // Ensure Modal is imported
+import Modal from '../../components/ui/Modal';
 
 import { useAssetStore } from '../../stores/useAssetStore';
-import { useMasterDataStore } from '../../stores/useMasterDataStore';
-import { useTransactionStore } from '../../stores/useTransactionStore';
 import { useRequestStore } from '../../stores/useRequestStore';
 
-// ... interface definitions ...
 interface StockOverviewPageProps {
     currentUser: User;
     setActivePage: (page: Page, filters?: any) => void;
@@ -65,7 +61,8 @@ interface StockItem {
 
 const LOW_STOCK_DEFAULT = 5;
 
-// ... SortableHeader components ...
+// --- Components ---
+
 const SortableHeader: React.FC<{
     children: React.ReactNode;
     columnKey: keyof Asset;
@@ -73,8 +70,7 @@ const SortableHeader: React.FC<{
     requestSort: (key: keyof Asset) => void;
     className?: string;
 }> = ({ children, columnKey, sortConfig, requestSort, className }) => {
-    // ... implementation same as before
-     const isSorted = sortConfig?.key === columnKey;
+    const isSorted = sortConfig?.key === columnKey;
     const direction = isSorted ? sortConfig.direction : undefined;
 
     const getSortIcon = () => {
@@ -100,8 +96,7 @@ const StockSortableHeader: React.FC<{
     requestStockSort: (key: keyof StockItem) => void;
     className?: string;
 }> = ({ children, columnKey, sortConfig, requestStockSort, className }) => {
-     // ... implementation same as before
-      const isSorted = sortConfig?.key === columnKey;
+    const isSorted = sortConfig?.key === columnKey;
     const direction = isSorted ? sortConfig.direction : undefined;
 
     const getSortIcon = () => {
@@ -120,7 +115,6 @@ const StockSortableHeader: React.FC<{
     );
 };
 
-// ... Helper functions (getConditionInfo, InfoItem, AssetCard) ...
 const getConditionInfo = (condition: AssetCondition) => {
     switch (condition) {
         case AssetCondition.BRAND_NEW:
@@ -149,15 +143,13 @@ const InfoItem: React.FC<{ icon: React.FC<{className?:string}>; label: string; c
 
 const AssetCard: React.FC<{
     asset: Asset;
-    dateReceived: string | null;
     onShowDetail: (data: PreviewData) => void;
     onReportDamage: (asset: Asset) => void;
     isLoaned?: boolean;
     loanId?: string;
     returnDate?: string | null;
     onReturn?: () => void;
-}> = ({ asset, dateReceived, onShowDetail, onReportDamage, isLoaned, loanId, returnDate, onReturn }) => {
-    // ... existing implementation
+}> = ({ asset, onShowDetail, onReportDamage, isLoaned, loanId, returnDate, onReturn }) => {
     const addNotification = useNotification();
     const ConditionIcon = getConditionInfo(asset.condition).Icon;
     const conditionColor = getConditionInfo(asset.condition).color;
@@ -200,7 +192,9 @@ const AssetCard: React.FC<{
                             : <span className="italic">Belum ditentukan</span>}
                     </InfoItem>
                 ) : (
-                    <InfoItem icon={BsCalendarCheck} label="Tgl Diterima">{dateReceived || 'N/A'}</InfoItem>
+                    <InfoItem icon={BsCalendarCheck} label="Tgl Diterima">
+                         {asset.purchaseDate ? new Date(asset.purchaseDate).toLocaleDateString('id-ID') : 'N/A'}
+                    </InfoItem>
                 )}
                 <InfoItem icon={BsUpcScan} label="Nomor Seri">
                     {asset.serialNumber ? (
@@ -258,7 +252,6 @@ const AssetCard: React.FC<{
     );
 };
 
-// --- STOCK HISTORY MODAL ---
 const StockHistoryModal: React.FC<{ 
     isOpen: boolean; 
     onClose: () => void; 
@@ -313,14 +306,13 @@ const StockHistoryModal: React.FC<{
 }
 
 const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setActivePage, onShowPreview, initialFilters, onClearInitialFilters, onReportDamage }) => {
-    // --- Data from Stores ---
+    // Stores
     const assets = useAssetStore((state) => state.assets);
     const assetCategories = useAssetStore((state) => state.categories);
-    const getStockHistory = useAssetStore((state) => state.getStockHistory); // Use the new action
-    // ... other stores
+    const getStockHistory = useAssetStore((state) => state.getStockHistory);
     const loanRequests = useRequestStore((state) => state.loanRequests);
     
-    // ... states ...
+    // State
     const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(9); // Adjusted for card layout
@@ -334,7 +326,6 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
     const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
     const filterPanelRef = useRef<HTMLDivElement>(null);
     
-    // NEW: Modal State for History
     const [historyModalState, setHistoryModalState] = useState<{ isOpen: boolean; itemName: string; itemBrand: string; movements: StockMovement[] }>({
         isOpen: false, itemName: '', itemBrand: '', movements: []
     });
@@ -345,7 +336,7 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
     };
 
     const handleThresholdChange = (key: string, value: number) => {
-        const newThreshold = Math.max(0, value); // Ensure threshold is not negative
+        const newThreshold = Math.max(0, value);
         setThresholds(prev => ({ ...prev, [key]: newThreshold }));
     };
 
@@ -385,17 +376,14 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
     };
     
     // --- STAFF-SPECIFIC LOGIC ---
-    // (Copy existing logic for Staff view from previous code if unchanged)
     const { myAssets, loanedAssetDetails } = useMemo(() => {
         if (currentUser.role !== 'Staff') return { myAssets: [], loanedAssetDetails: new Map() };
 
-        // 1. Permanently assigned assets
         const permanentlyAssigned = assets.filter(a => a.currentUser === currentUser.name);
 
-        // 2. Loaned assets (Exclude returned ones)
         const myActiveLoans = loanRequests.filter(
             lr => lr.requester === currentUser.name && 
-                  (lr.status === LoanRequestStatus.ON_LOAN || lr.status === LoanRequestStatus.OVERDUE || lr.status === LoanRequestStatus.AWAITING_RETURN)
+                  (lr.status === 'Dipinjam' || lr.status === 'Terlambat' || lr.status === 'Menunggu Pengembalian')
         );
 
         const loanedAssetIds = myActiveLoans.flatMap(lr => {
@@ -406,14 +394,12 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
         
         const loanedAssets = assets.filter(a => loanedAssetIds.includes(a.id));
 
-        // 3. Combine and deduplicate
         const allMyAssetsMap = new Map<string, Asset>();
         permanentlyAssigned.forEach(a => allMyAssetsMap.set(a.id, a));
         loanedAssets.forEach(a => allMyAssetsMap.set(a.id, a));
 
         const finalMyAssets = Array.from(allMyAssetsMap.values());
         
-        // 4. Create a map for loaned asset details (like return date)
         const finalLoanedAssetDetails = new Map<string, { returnDate: string | null, loanId: string }>();
         myActiveLoans.forEach(loan => {
             loan.items.forEach(item => {
@@ -470,15 +456,12 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
         }
     }, [myAssets, currentUser.role]);
 
-    // ... (getDateReceived logic if needed)
-
     // --- ADMIN/MANAGER-SPECIFIC LOGIC ---
     const aggregatedStock = useMemo<StockItem[]>(() => {
         if (currentUser.role === 'Staff') return [];
         
         const stockMap = new Map<string, StockItem>();
         
-        // ... (existing aggregation logic) ...
         const activeAssets = assets.filter(asset => asset.status !== AssetStatus.DECOMMISSIONED);
 
         activeAssets.forEach(asset => {
@@ -524,7 +507,6 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
 
     }, [assets, assetCategories, currentUser]);
     
-    // ... (summaryData logic) ...
      const summaryData = useMemo(() => {
         if (currentUser.role === 'Staff') return null;
         const lowStockItems = aggregatedStock.filter(item => {
@@ -543,7 +525,6 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
         };
     }, [aggregatedStock, thresholds, currentUser.role]);
 
-    // ... (formatCurrency logic) ...
     const formatCurrencyShort = (value: number): string => {
         if (value >= 1_000_000_000) {
             return `${(value / 1_000_000_000).toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Miliar`;
@@ -560,7 +541,6 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
     const fullStockValue = summaryData ? `Rp ${summaryData.totalValueInStorage.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : 'Rp 0';
     const shortStockValue = summaryData ? `Rp ${formatCurrencyShort(summaryData.totalValueInStorage)}` : 'Rp 0';
 
-    // ... (filterOptions logic) ...
     const filterOptions = useMemo(() => {
         const categories = [...new Set(aggregatedStock.map(item => item.category))];
         const brands = [...new Set(aggregatedStock.map(item => item.brand))];
@@ -571,7 +551,6 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
         if (currentUser.role === 'Staff') return [];
         return aggregatedStock
             .filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.brand.toLowerCase().includes(searchQuery.toLowerCase()))
-            // ... other filters ...
             .filter(item => filters.category ? item.category === filters.category : true)
             .filter(item => filters.brand ? item.brand === filters.brand : true)
             .filter(item => {
@@ -636,7 +615,6 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
                     </div>
                 </div>
 
-                {/* Staff Asset Cards ... (Keep existing implementation) */}
                 {myAssetsPaginated.length > 0 ? (
                     <>
                         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -647,7 +625,6 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
                                     <AssetCard
                                         key={asset.id}
                                         asset={asset}
-                                        dateReceived={null} // Simplified for brevity, reuse getDateReceived if needed
                                         onShowDetail={onShowPreview}
                                         onReportDamage={onReportDamage}
                                         isLoaned={isLoaned}
@@ -735,7 +712,6 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
                         )}
                     </div>
                     <div className="relative" ref={filterPanelRef}>
-                        {/* Filter Popup Button */}
                         <button
                             onClick={() => { setTempFilters(filters); setIsFilterPanelOpen(p => !p); }}
                             className="inline-flex items-center justify-center gap-2 w-full h-10 px-4 text-sm font-semibold text-gray-700 transition-all duration-200 bg-white border border-gray-300 rounded-lg shadow-sm sm:w-auto hover:bg-gray-50"
@@ -851,9 +827,9 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
                                                         {item.name}
                                                     </a>
                                                     {item.trackingMethod === 'bulk' ? (
-                                                        <span className="px-2 py-0.5 text-xs font-semibold text-purple-800 bg-purple-100 rounded-full">Bulk</span>
+                                                        <span className="px-2 py-0.5 text-xs font-semibold text-purple-800 bg-purple-100 rounded-full">Material</span>
                                                     ) : (
-                                                        <span className="px-2 py-0.5 text-xs font-semibold text-gray-700 bg-gray-100 rounded-full">Individual</span>
+                                                        <span className="px-2 py-0.5 text-xs font-semibold text-gray-700 bg-gray-100 rounded-full">Device</span>
                                                     )}
                                                 </div>
                                                 <div className="text-xs text-gray-500">{item.brand} &bull; {item.category}</div>
@@ -954,7 +930,6 @@ const StockOverviewPage: React.FC<StockOverviewPageProps> = ({ currentUser, setA
                                             </td>
                                             <td className="px-6 py-4 text-sm font-medium text-right whitespace-nowrap">
                                                 <div className="flex items-center justify-end space-x-2">
-                                                    {/* Changed to open Ledger modal */}
                                                     <button 
                                                         onClick={() => handleOpenHistory(item.name, item.brand)}
                                                         className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors bg-gray-100 rounded-md shadow-sm hover:bg-gray-200"

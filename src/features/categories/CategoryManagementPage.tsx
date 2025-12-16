@@ -18,7 +18,7 @@ import { CustomSelect } from '../../components/ui/CustomSelect';
 import { CustomerIcon } from '../../components/icons/CustomerIcon';
 import { ModelManagementModal } from '../../components/ui/ModelManagementModal';
 import { TypeManagementModal } from '../../components/ui/TypeManagementModal';
-import { BsTools, BsBoxSeam } from 'react-icons/bs';
+import { BsTools, BsBoxSeam, BsLightningFill } from 'react-icons/bs';
 
 // Store
 import { useAssetStore } from '../../stores/useAssetStore';
@@ -231,11 +231,11 @@ const CategoryManagementPage: React.FC<CategoryManagementProps> = ({ currentUser
                         onClick={() => setActiveTab('material')}
                         className={`group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${
                             activeTab === 'material'
-                                ? 'border-tm-primary text-tm-primary'
+                                ? 'border-orange-500 text-orange-600'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                         }`}
                     >
-                        <BsBoxSeam className={`mr-2 h-5 w-5 ${activeTab === 'material' ? 'text-tm-primary' : 'text-gray-400 group-hover:text-gray-500'}`} />
+                        <BsLightningFill className={`mr-2 h-5 w-5 ${activeTab === 'material' ? 'text-orange-500' : 'text-gray-400 group-hover:text-gray-500'}`} />
                         Material (Massal)
                     </button>
                 </nav>
@@ -372,7 +372,7 @@ const CategoryManagementPage: React.FC<CategoryManagementProps> = ({ currentUser
                     onClose={() => setTypeModalState({ ...typeModalState, isOpen: false })}
                     parentCategory={typeModalState.category}
                     typeToEdit={typeModalState.typeToEdit}
-                    defaultClassification={activeTab} // Pass active tab as default
+                    defaultClassification={activeTab} // <-- Ensuring the active tab is passed as default context
                 />
             )}
             

@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { AssetStatus, ItemStatus, Page, PreviewData, User, LoanRequestStatus } from '../../types';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -66,10 +67,10 @@ const MacroStat: React.FC<{ label: string; value: string; icon: any; subValue?: 
         <div className="flex-shrink-0 p-3 bg-blue-50 text-tm-primary rounded-xl">
             <Icon className="w-6 h-6" />
         </div>
-        <div className="ml-4">
-            <p className="text-sm font-medium text-gray-500">{label}</p>
-            <p className="text-xl font-bold text-gray-900">{value}</p>
-            {subValue && <p className="text-xs text-gray-400 mt-0.5">{subValue}</p>}
+        <div className="ml-4 min-w-0">
+            <p className="text-sm font-medium text-gray-500 truncate">{label}</p>
+            <p className="text-xl font-bold text-gray-900 truncate">{value}</p>
+            {subValue && <p className="text-xs text-gray-400 mt-0.5 truncate">{subValue}</p>}
         </div>
     </div>
 );
@@ -81,7 +82,7 @@ const FeatureStat: React.FC<{ title: string; items: { label: string; value: numb
         <div className="space-y-3">
             {items.map((item, idx) => (
                 <div key={idx} className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-gray-600">{item.label}</span>
+                    <span className="text-sm font-medium text-gray-600 truncate mr-2">{item.label}</span>
                     <span className={`text-sm font-bold px-2 py-0.5 rounded ${item.color}`}>{item.value}</span>
                 </div>
             ))}
@@ -276,12 +277,12 @@ export default function DashboardPage(props: DashboardProps): React.ReactElement
     return (
         <div className="p-4 sm:p-6 md:p-8 space-y-8 bg-gray-50/30 min-h-screen font-sans">
             {/* HEADER */}
-            <div className="flex flex-col md:flex-row justify-between items-end gap-4 pb-2">
+            <div className="flex flex-col md:flex-row justify-between md:items-end gap-2 md:gap-4 pb-2">
                 <div>
-                    <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Pusat Analitik Terpadu</h1>
+                    <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">Pusat Analitik Terpadu</h1>
                     <p className="text-sm text-gray-500 mt-1">Tinjauan menyeluruh inventori aset dan operasional.</p>
                 </div>
-                <div className="text-right hidden md:block">
+                <div className="md:text-right">
                     <p className="text-sm font-bold text-gray-800">{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
                 </div>
             </div>
@@ -406,7 +407,7 @@ export default function DashboardPage(props: DashboardProps): React.ReactElement
             {/* LAYER 5: VISUALIZATION & DETAILED MATRICES */}
             
             {/* Charts */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-6 h-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-auto">
                 <div className="lg:col-span-3 bg-white p-6 border border-gray-100 rounded-2xl shadow-sm flex flex-col">
                     <WarrantyAlertWidget assets={assets} />
                      <div className="flex-1">

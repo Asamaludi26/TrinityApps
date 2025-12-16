@@ -24,7 +24,7 @@ interface TypeManagementModalProps {
   assets?: Asset[];
   onSave?: (parentCategory: AssetCategory, typeData: Omit<AssetType, 'id' | 'standardItems'>, typeId?: number) => void;
   onDelete?: (parentCategory: AssetCategory, typeToDelete: AssetType) => void;
-  defaultClassification?: ItemClassification; // New Prop
+  defaultClassification?: ItemClassification; // Prop dari parent berdasarkan Tab aktif
 }
 
 interface TypeToDelete extends AssetType {
@@ -56,6 +56,7 @@ export const TypeManagementModal: React.FC<TypeManagementModalProps> = ({
   const types = category.types || [];
 
   const [name, setName] = useState('');
+  // Inisialisasi klasifikasi berdasarkan prop default
   const [classification, setClassification] = useState<ItemClassification>(defaultClassification);
   const [trackingMethod, setTrackingMethod] = useState<TrackingMethod>('individual');
   const [unitOfMeasure, setUnitOfMeasure] = useState('unit');
@@ -68,9 +69,11 @@ export const TypeManagementModal: React.FC<TypeManagementModalProps> = ({
 
   const isEditing = editingId !== null;
 
+  // Effect untuk inisialisasi data saat modal dibuka atau mode edit berubah
   useEffect(() => {
     if (isOpen) {
         if (typeToEdit) {
+            // Mode Edit: Gunakan data eksisting
             setEditingId(typeToEdit.id);
             setName(typeToEdit.name);
             setClassification(typeToEdit.classification || 'asset');
@@ -79,27 +82,43 @@ export const TypeManagementModal: React.FC<TypeManagementModalProps> = ({
             setBaseUnitOfMeasure(typeToEdit.baseUnitOfMeasure || 'pcs');
             setQuantityPerUnit(typeToEdit.quantityPerUnit || '');
         } else {
+            // Mode Baru: Reset form dan terapkan logika otomatis
             resetForm();
         }
     } else {
         resetForm();
     }
-  }, [isOpen, typeToEdit, defaultClassification]);
+  }, [isOpen, typeToEdit, defaultClassification]); // Re-run jika defaultClassification berubah
 
-  // Effect to enforce constraints when classification changes
+  // Logika Otomatisasi: Paksa tracking method berdasarkan klasifikasi
   useEffect(() => {
-      if (classification === 'material') {
-          setTrackingMethod('bulk'); // Material must be bulk
+      // Hanya terapkan logika paksa jika BUKAN mode edit (saat membuat baru)
+      // Atau jika user secara eksplisit mengubah klasifikasi (walaupun UI disembunyikan, logic tetap ada)
+      if (!isEditing) {
+          if (classification === 'material') {
+              setTrackingMethod('bulk'); 
+          } else {
+              setTrackingMethod('individual');
+          }
       }
-  }, [classification]);
+  }, [classification, isEditing]);
 
   const resetForm = () => {
     setName('');
-    setClassification(defaultClassification); // Use prop default
-    setTrackingMethod(defaultClassification === 'material' ? 'bulk' : 'individual');
-    setUnitOfMeasure('unit');
+    // Set klasifikasi sesuai tab yang aktif di parent
+    setClassification(defaultClassification); 
+    
+    // Logika Otomatis:
+    // Jika Tab Asset -> Individual
+    // Jika Tab Material -> Bulk
+    const isMaterialTab = defaultClassification === 'material';
+    setTrackingMethod(isMaterialTab ? 'bulk' : 'individual');
+    
+    // Default satuan
+    setUnitOfMeasure(isMaterialTab ? 'Pcs' : 'unit');
     setBaseUnitOfMeasure('pcs');
     setQuantityPerUnit('');
+    
     setEditingId(null);
     setIsLoading(false);
   };
@@ -217,62 +236,31 @@ export const TypeManagementModal: React.FC<TypeManagementModalProps> = ({
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {/* Classification Selector */}
+                        {/* Auto-Configuration Display (Replacing Manual Selection) */}
                         <div className="sm:col-span-2">
-                             <label className="block text-sm font-medium text-gray-700 mb-2">Klasifikasi Item</label>
-                             <div className="grid grid-cols-2 gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setClassification('asset')}
-                                    className={`p-3 border rounded-lg text-left transition-all flex items-center gap-3 ${classification === 'asset' ? 'bg-blue-50 border-tm-primary ring-1 ring-tm-primary' : 'bg-white border-gray-300 hover:border-gray-400'}`}
-                                >
-                                    <div className={`p-2 rounded-full ${classification === 'asset' ? 'bg-blue-100 text-tm-primary' : 'bg-gray-100 text-gray-500'}`}><BsTools /></div>
+                             <label className="block text-sm font-medium text-gray-700 mb-2">Konfigurasi Item (Otomatis)</label>
+                             {classification === 'asset' ? (
+                                <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-center gap-3 animate-fade-in-up">
+                                    <div className="p-2 bg-blue-100 text-tm-primary rounded-full flex-shrink-0"><BsTools /></div>
                                     <div>
-                                        <div className="font-semibold text-sm text-gray-800">Aset Tetap</div>
-                                        <div className="text-xs text-gray-500">Perangkat, Alat Kerja (Router, Splicer)</div>
+                                        <div className="font-semibold text-sm text-gray-900">Aset Tetap (Device & Tools)</div>
+                                        <div className="text-xs text-gray-500">
+                                            Metode Pelacakan: <span className="font-bold text-tm-primary">Individual (SN & MAC)</span>
+                                        </div>
                                     </div>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setClassification('material')}
-                                    className={`p-3 border rounded-lg text-left transition-all flex items-center gap-3 ${classification === 'material' ? 'bg-orange-50 border-orange-500 ring-1 ring-orange-500' : 'bg-white border-gray-300 hover:border-gray-400'}`}
-                                >
-                                    <div className={`p-2 rounded-full ${classification === 'material' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'}`}><BsLightningFill /></div>
-                                    <div>
-                                        <div className="font-semibold text-sm text-gray-800">Material</div>
-                                        <div className="text-xs text-gray-500">Habis Pakai (Kabel, Konektor, Patchcord)</div>
-                                    </div>
-                                </button>
-                             </div>
-                        </div>
-
-                        {/* Tracking Method - Conditional */}
-                        {classification === 'asset' ? (
-                             <div className="sm:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700 mt-2">Metode Pelacakan</label>
-                                <div className="grid grid-cols-2 gap-3 mt-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => setTrackingMethod('individual')}
-                                        className={`px-3 py-2 border rounded-md text-sm text-center transition-colors ${trackingMethod === 'individual' ? 'bg-blue-50 border-tm-primary text-tm-primary font-medium' : 'bg-white text-gray-600'}`}
-                                    >
-                                        Individual (Serial Number)
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setTrackingMethod('bulk')}
-                                        className={`px-3 py-2 border rounded-md text-sm text-center transition-colors ${trackingMethod === 'bulk' ? 'bg-blue-50 border-tm-primary text-tm-primary font-medium' : 'bg-white text-gray-600'}`}
-                                    >
-                                        Massal (Jumlah Saja)
-                                    </button>
                                 </div>
-                            </div>
-                        ) : (
-                             <div className="sm:col-span-2 p-3 bg-orange-50 border border-orange-100 rounded-md text-xs text-orange-800 flex items-start gap-2">
-                                 <ExclamationTriangleIcon className="w-4 h-4 mt-0.5 flex-shrink-0"/>
-                                 <span>Material otomatis menggunakan metode pelacakan <strong>Massal (Bulk)</strong> karena sifatnya yang habis pakai.</span>
-                             </div>
-                        )}
+                             ) : (
+                                <div className="p-3 bg-orange-50 border border-orange-100 rounded-lg flex items-center gap-3 animate-fade-in-up">
+                                    <div className="p-2 bg-orange-100 text-orange-600 rounded-full flex-shrink-0"><BsLightningFill /></div>
+                                    <div>
+                                        <div className="font-semibold text-sm text-gray-900">Material (Consumables)</div>
+                                        <div className="text-xs text-gray-500">
+                                            Metode Pelacakan: <span className="font-bold text-orange-600">Massal (Bulk)</span>
+                                        </div>
+                                    </div>
+                                </div>
+                             )}
+                        </div>
 
                         {/* Unit Config */}
                         <div className="space-y-4 sm:col-span-2 border-t pt-4">
@@ -291,14 +279,14 @@ export const TypeManagementModal: React.FC<TypeManagementModalProps> = ({
                                     </div>
                                     <p className="mt-1 text-xs text-gray-500">
                                         {classification === 'material' 
-                                            ? "Satuan saat barang dikeluarkan dari gudang. (Cth: 'Meter' untuk kabel hasbal, 'Pcs' untuk patchcord)." 
+                                            ? "Satuan saat barang dikeluarkan dari gudang. (Cth: 'Meter' untuk kabel hasbal)." 
                                             : "Satuan penghitungan stok."}
                                     </p>
                                 </div>
 
                                 {trackingMethod === 'bulk' && (
                                     <>
-                                        <div>
+                                        <div className="animate-fade-in-up">
                                             <label htmlFor="baseUnitOfMeasure" className="block text-sm font-medium text-gray-700">Satuan Eceran (Opsional)</label>
                                             <div className="mt-1">
                                                 <CreatableSelect
@@ -310,7 +298,7 @@ export const TypeManagementModal: React.FC<TypeManagementModalProps> = ({
                                             </div>
                                             <p className="mt-1 text-xs text-gray-500">Jika stok utama adalah paket (misal: Roll/Box), ini satuan isinya.</p>
                                         </div>
-                                        <div className="sm:col-span-2">
+                                        <div className="sm:col-span-2 animate-fade-in-up">
                                             <label htmlFor="quantityPerUnit" className="block text-sm font-medium text-gray-700">Konversi (Isi per Satuan Utama)</label>
                                             <div className="flex items-center gap-2 mt-1">
                                                 <span className="text-sm text-gray-600">1 {unitOfMeasure || '...'} = </span>

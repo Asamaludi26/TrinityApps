@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef } from 'react';
 import { CloseIcon } from '../icons/CloseIcon';
 
@@ -71,7 +72,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footerC
           {/* Modal panel */}
           <div
               ref={modalRef}
-              className={`relative w-full my-8 text-left align-middle bg-white rounded-xl shadow-xl transform transition-all duration-300 ease-in-out 
+              className={`relative w-full my-4 sm:my-8 text-left align-middle bg-white rounded-xl shadow-xl transform transition-all duration-300 ease-in-out 
                          ${sizeClasses[size]}
                          ${isOpen ? 'opacity-100 scale-100' : 'opacity-95 scale-95'}
                          flex flex-col max-h-[90vh]`}
@@ -79,12 +80,12 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footerC
           >
               {/* Header */}
               <div className="flex-shrink-0 flex items-start justify-between p-4 border-b rounded-t">
-                  <h3 className="text-xl font-semibold text-gray-900" id="modal-title">
+                  <h3 className="text-lg sm:text-xl font-semibold text-gray-900 pr-4" id="modal-title">
                       {title}
                   </h3>
                   <button
                       type="button"
-                      className="inline-flex items-center p-1.5 ml-auto text-sm text-gray-400 bg-transparent rounded-lg hover:bg-gray-200 hover:text-gray-900"
+                      className="inline-flex items-center p-1.5 ml-auto text-sm text-gray-400 bg-transparent rounded-lg hover:bg-gray-200 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-300"
                       onClick={onClose}
                       aria-label="Tutup modal"
                   >
@@ -95,19 +96,19 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footerC
               
               {/* Scrollable Content Area */}
               <div className="flex-auto overflow-y-auto custom-scrollbar">
-                  <div className={`${!disableContentPadding ? 'p-6' : ''}`}>
+                  <div className={`${!disableContentPadding ? 'p-4 sm:p-6' : ''}`}>
                       {children}
                   </div>
               </div>
               
               {/* Footer */}
               {(footerContent || !hideDefaultCloseButton) && (
-                  <div className="flex-shrink-0 flex items-center justify-end p-4 space-x-3 border-t bg-gray-50 rounded-b-xl">
+                  <div className="flex-shrink-0 flex flex-col-reverse sm:flex-row items-center justify-end p-4 gap-3 border-t bg-gray-50 rounded-b-xl">
                       {!hideDefaultCloseButton && (
                           <button
                               type="button"
                               onClick={onClose}
-                              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50"
+                              className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50"
                               >
                               {closeButtonText}
                           </button>

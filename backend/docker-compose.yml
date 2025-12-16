@@ -1,0 +1,56 @@
+
+version: '3.8'
+
+services:
+  # Database Service
+  db:
+    image: postgres:15-alpine
+    container_name: triniti_asset_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-triniti_asset}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - triniti_network
+
+  # Backend API Service
+  api:
+    build: .
+    container_name: triniti_asset_api
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-triniti_asset}?schema=public"
+      JWT_SECRET: ${JWT_SECRET:-rahasia_development}
+      PORT: 3001
+    networks:
+      - triniti_network
+
+  # Database GUI (Optional)
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: triniti_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@triniti.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    networks:
+      - triniti_network
+
+volumes:
+  postgres_data:
+
+networks:
+  triniti_network:

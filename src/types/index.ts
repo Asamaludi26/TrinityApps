@@ -616,3 +616,8 @@ export interface StockMovement {
     actor: string;
     notes?: string;
 }
+
+export interface LoginResponse {
+    access_token: string;
+    user: User;
+}
