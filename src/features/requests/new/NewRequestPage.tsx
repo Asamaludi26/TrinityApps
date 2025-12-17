@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   Request,
@@ -27,7 +26,7 @@ import DatePicker from "../../../components/ui/DatePicker";
 import { EyeIcon } from "../../../components/icons/EyeIcon";
 import { TrashIcon } from "../../../components/icons/TrashIcon";
 import FloatingActionBar from "../../../components/ui/FloatingActionBar";
-import { useNotification } from "../../../providers/NotificationProvider";
+import { useNotification } from '../../../providers/NotificationProvider';
 import { InboxIcon } from "../../../components/icons/InboxIcon";
 import { useSortableData, SortConfig } from "../../../hooks/useSortableData";
 import { SortAscIcon } from "../../../components/icons/SortAscIcon";
@@ -64,7 +63,7 @@ import { AssetIcon } from "../../../components/icons/AssetIcon";
 import { ModelManagementModal } from "../../../components/ui/ModelManagementModal";
 import { TypeManagementModal } from "../../../components/ui/TypeManagementModal";
 import { CategoryFormModal } from "../../categories/CategoryManagementPage";
-import { BsLightningFill, BsBoxSeam, BsFileEarmarkSpreadsheet, BsTable, BsCalendarRange, BsPersonBadge, BsInfoCircleFill } from "react-icons/bs";
+import { BsLightningFill, BsBoxSeam, BsFileEarmarkSpreadsheet, BsTable, BsCalendarRange, BsPersonBadge, BsInfoCircleFill, BsLayoutTextWindowReverse } from "react-icons/bs";
 
 // Stores
 import { useRequestStore } from "../../../stores/useRequestStore";
@@ -89,12 +88,12 @@ const ExportConfigModal: React.FC<{
   const [endDate, setEndDate] = useState<Date | null>(null);
 
   const rangeOptions = [
-    { value: 'all', label: 'Semua Data Permintaan (Seluruh Database)' },
-    { value: 'today', label: 'Hari Ini (Aktivitas Terbaru)' },
-    { value: 'week', label: '7 Hari Terakhir (Laporan Mingguan)' },
-    { value: 'month', label: 'Bulan Berjalan (Laporan Bulanan)' },
-    { value: 'year', label: 'Tahun Berjalan (Laporan Tahunan)' },
-    { value: 'custom', label: 'Rentang Tanggal Kustom (Pilih Manual)' },
+    { value: 'all', label: 'Seluruh Database' },
+    { value: 'today', label: 'Hari Ini' },
+    { value: 'week', label: '7 Hari Terakhir' },
+    { value: 'month', label: 'Bulan Berjalan' },
+    { value: 'year', label: 'Tahun Berjalan' },
+    { value: 'custom', label: 'Rentang Tanggal Kustom' },
   ];
 
   const filteredData = useMemo(() => {
@@ -187,24 +186,28 @@ const ExportConfigModal: React.FC<{
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Export Laporan Profesional" size="lg">
-      <div className="space-y-6">
-        {/* Banner Section */}
-        <div className="flex items-center gap-5 p-6 bg-gradient-to-r from-tm-dark to-slate-800 text-white rounded-2xl shadow-lg border border-slate-700">
-          <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-md border border-white/20">
-            <BsFileEarmarkSpreadsheet className="w-12 h-12 text-tm-accent" />
+    <Modal isOpen={isOpen} onClose={onClose} title="Export Data Laporan" size="lg">
+      <div className="space-y-5">
+        {/* Banner Section - Optimized Refined UI */}
+        <div className="flex items-center gap-4 p-5 bg-slate-900 text-white rounded-xl shadow-inner border-b-2 border-tm-accent relative overflow-hidden">
+          <div className="absolute right-[-20px] top-[-10px] opacity-10 rotate-12">
+            <BsFileEarmarkSpreadsheet className="w-24 h-24" />
           </div>
-          <div>
-            <h4 className="font-black text-xl tracking-tight uppercase">Excel Report Engine</h4>
-            <p className="text-sm text-slate-400 mt-1">Konfigurasikan parameter laporan Anda untuk hasil yang akurat.</p>
+          <div className="flex-shrink-0 p-2.5 bg-tm-accent/20 rounded-lg border border-tm-accent/30 relative z-10">
+            <BsLayoutTextWindowReverse className="w-6 h-6 text-tm-accent" />
+          </div>
+          <div className="relative z-10">
+            <h4 className="font-bold text-lg tracking-tight">Konfigurasi Ekspor Laporan</h4>
+            <p className="text-xs text-slate-400 font-medium opacity-80">Siapkan dokumen audit dalam format spreadsheet (CSV).</p>
           </div>
         </div>
 
         <div className="space-y-5">
-            {/* Section 1: Filter Waktu (Full Width Row) */}
-            <div className="p-5 bg-white border border-gray-200 rounded-2xl shadow-sm hover:border-tm-accent/30 transition-colors">
-                <label className="flex items-center gap-2 text-xs font-black text-tm-primary uppercase tracking-widest mb-4">
-                    <BsCalendarRange className="w-4 h-4"/> 1. Tentukan Periode Data
+            {/* Section 1: Filter Waktu */}
+            <div className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
+                <label className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-[0.15em] mb-4">
+                    <BsCalendarRange className="w-3.5 h-3.5 text-tm-primary"/>
+                    Pilih Periode Waktu
                 </label>
                 <div className="space-y-4">
                     <CustomSelect 
@@ -214,13 +217,13 @@ const ExportConfigModal: React.FC<{
                     />
                     
                     {rangeType === 'custom' && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl animate-fade-in-up">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-lg animate-fade-in-up">
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 px-1">Tanggal Mulai</label>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Mulai Dari</label>
                                 <DatePicker id="export-start" selectedDate={startDate} onDateChange={setStartDate} />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 px-1">Tanggal Selesai</label>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-2 tracking-wider">Sampai Dengan</label>
                                 <DatePicker id="export-end" selectedDate={endDate} onDateChange={setEndDate} />
                             </div>
                         </div>
@@ -228,56 +231,76 @@ const ExportConfigModal: React.FC<{
                 </div>
             </div>
 
-            {/* Section 2: Informasi Akun (Full Width Row) */}
-            <div className="p-5 bg-white border border-gray-200 rounded-2xl shadow-sm hover:border-tm-accent/30 transition-colors">
-                <label className="flex items-center gap-2 text-xs font-black text-tm-primary uppercase tracking-widest mb-4">
-                    <BsPersonBadge className="w-4 h-4"/> 2. Metadata Pembuat Laporan
+            {/* Section 2: Metadata */}
+            <div className="p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
+                <label className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-[0.15em] mb-4">
+                    <BsPersonBadge className="w-3.5 h-3.5 text-tm-primary"/>
+                    Verifikasi Operator
                 </label>
-                <div className="flex items-center gap-4 p-4 bg-blue-50/50 border border-blue-100 rounded-xl">
-                    <Avatar name={currentUser.name} className="w-14 h-14 shadow-md border-2 border-white" />
-                    <div className="min-w-0">
-                        <p className="text-lg font-extrabold text-tm-dark truncate leading-tight">{currentUser.name}</p>
-                        <p className="text-xs text-gray-500 uppercase font-bold tracking-tighter mt-1">{currentUser.role} &bull; PT. Triniti Media Indonesia</p>
+                <div className="flex items-center gap-3 p-3 bg-blue-50/50 border border-blue-100 rounded-lg">
+                    <Avatar name={currentUser.name} className="w-10 h-10 shadow-sm border border-white" />
+                    <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-tm-dark truncate leading-tight">{currentUser.name}</p>
+                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mt-1">
+                            {currentUser.role} &bull; TRINITI MEDIA
+                        </p>
                     </div>
-                    <div className="ml-auto hidden sm:block">
-                        <div className="flex items-center gap-1 px-2 py-1 bg-white border rounded-lg text-[10px] font-mono font-bold text-tm-primary">
-                            VALIDATED
+                    <div className="ml-auto">
+                        <div className="px-2 py-0.5 bg-white border border-blue-200 rounded text-[9px] font-bold text-tm-primary tracking-tighter shadow-xs">
+                            AUTHORIZED
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Section 3: Summary Statistics (Footer Highlight) */}
-            <div className="bg-slate-900 rounded-2xl overflow-hidden shadow-xl">
-                <div className="px-5 py-2.5 bg-slate-800/50 border-b border-white/5">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Live Export Statistics</p>
+            {/* Section 3: Statistics Summary - Improved Proportions */}
+            <div className="bg-slate-900 rounded-xl overflow-hidden shadow-lg border border-slate-800">
+                <div className="px-5 py-2.5 bg-white/5 border-b border-white/5">
+                    <div className="flex justify-between items-center">
+                        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Pratinjau Output</p>
+                        <span className="flex items-center gap-1 text-[9px] font-bold text-tm-accent uppercase">
+                            <BsInfoCircleFill className="w-2.5 h-2.5" /> Validated
+                        </span>
+                    </div>
                 </div>
-                <div className="p-5 grid grid-cols-2 gap-4">
+                <div className="p-5 grid grid-cols-2 gap-6">
                     <div className="space-y-1">
-                        <span className="text-[10px] text-slate-500 uppercase font-bold">Baris Ditemukan</span>
-                        <p className="text-2xl font-black text-white">{filteredData.length} <span className="text-xs font-medium text-slate-400">Request</span></p>
+                        <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest">Total Data</span>
+                        <p className="text-xl font-bold text-white leading-none">
+                            {filteredData.length} 
+                            <span className="text-[10px] font-medium text-slate-500 ml-1.5 lowercase">baris</span>
+                        </p>
                     </div>
-                    <div className="space-y-1 border-l border-white/10 pl-4">
-                        <span className="text-[10px] text-slate-500 uppercase font-bold">Akumulasi Nilai</span>
-                        <p className="text-2xl font-black text-tm-accent truncate">Rp {totalValueSum.toLocaleString('id-ID')}</p>
+                    <div className="space-y-1 border-l border-white/5 pl-6">
+                        <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest">Akumulasi Nilai</span>
+                        <p className="text-xl font-bold text-tm-accent truncate leading-none">
+                            <span className="text-xs font-semibold mr-1">Rp</span>
+                            {totalValueSum.toLocaleString('id-ID')}
+                        </p>
                     </div>
                 </div>
-                <div className="px-5 py-3 bg-tm-primary/10 flex items-center gap-2">
-                    <BsInfoCircleFill className="text-tm-accent w-3 h-3" />
-                    <p className="text-[10px] text-slate-400 font-medium italic">Format file: CSV UTF-8 with Byte Order Mark (BOM) untuk kompatibilitas Excel penuh.</p>
+                <div className="px-5 py-2.5 bg-slate-950 border-t border-white/5">
+                    <p className="text-[9px] text-slate-500 font-medium italic tracking-wide text-center uppercase opacity-60">
+                        Format: <span className="text-slate-300">CSV UTF-8 (BOM)</span> &bull; Excel Compatible
+                    </p>
                 </div>
             </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-3 pt-4">
-          <button onClick={onClose} className="order-2 sm:order-1 flex-1 px-6 py-3.5 text-sm font-black text-gray-600 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all uppercase tracking-widest">Batal</button>
+        {/* Footer Actions - Standardized Sizes */}
+        <div className="flex gap-3 pt-5 border-t border-gray-100">
+          <button 
+            onClick={onClose} 
+            className="flex-1 px-5 py-2.5 text-sm font-semibold text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all shadow-sm"
+          >
+            Batalkan
+          </button>
           <button 
             onClick={handleExport} 
             disabled={filteredData.length === 0}
-            className="order-1 sm:order-2 flex-[2] inline-flex items-center justify-center gap-3 px-6 py-3.5 text-sm font-black text-white bg-tm-primary rounded-xl shadow-lg shadow-tm-primary/25 hover:bg-tm-primary-hover disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed transition-all transform active:scale-95 uppercase tracking-widest"
+            className="flex-[1.5] inline-flex items-center justify-center gap-2.5 px-5 py-2.5 text-sm font-bold text-white bg-tm-primary rounded-lg shadow-md shadow-tm-primary/20 hover:bg-tm-primary-hover hover:-translate-y-0.5 active:translate-y-0 disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed transition-all"
           >
-            <BsTable className="w-5 h-5" />
+            <BsTable className="w-4 h-4" />
             Download Laporan
           </button>
         </div>
@@ -523,7 +546,7 @@ const RequestTable: React.FC<RequestTableProps> = ({
                           )}
                           {unreadNotifTypes.has("FOLLOW_UP") && (
                             <Tooltip text="Permintaan ini di-follow up">
-                              <BellIcon className="w-4 h-4 text-amber-500" />
+                              <BellIcon className="w-4 h-4 text-amber-50" />
                             </Tooltip>
                           )}
                         </div>
