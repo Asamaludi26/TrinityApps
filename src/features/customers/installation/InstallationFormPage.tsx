@@ -698,7 +698,8 @@ const InstallationFormPage: React.FC<InstallationFormPageProps> = (props) => {
     };
 
     const technicianOptions = useMemo(() => {
-         const techNames = Array.from(new Set(users.filter(u => u.divisionId === 3).map(u => u.name)));
+         // Fix: Explicitly type techNames as string array to prevent 'unknown' type inference in CustomSelect options.
+         const techNames: string[] = Array.from(new Set(users.filter(u => u.divisionId === 3).map(u => u.name)));
          return techNames.map(name => ({ value: name, label: name }));
     }, [users]);
 

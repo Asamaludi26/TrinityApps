@@ -1,36 +1,51 @@
-export const exportToCSV = <T extends object>(data: T[], filename: string): void => {
+
+export const exportToCSV = <T extends object>(
+    data: T[], 
+    filename: string, 
+    extraHeader?: { title: string; metadata: Record<string, string> }
+): void => {
     if (data.length === 0) {
-        console.warn("No data to export.");
         alert("Tidak ada data untuk diekspor.");
         return;
     }
 
-    const headers = Object.keys(data[0]) as (keyof T)[];
-    const csvRows = [
-        headers.join(',') // Header row
-    ];
+    const csvRows: string[] = [];
 
+    // 1. Judul Laporan (Simulasi Center Alignment di Excel dengan menaruh di kolom tengah)
+    if (extraHeader?.title) {
+        csvRows.push(`,,,,${extraHeader.title.toUpperCase()}`);
+        csvRows.push(""); // Baris kosong sebagai spacer
+    }
+
+    // 2. Metadata Section (Akun, Range Waktu, Tanggal Cetak)
+    if (extraHeader?.metadata) {
+        const meta = extraHeader.metadata;
+        // Akun di kiri, Range di tengah, Tanggal di kanan
+        const metaRow = `Akun : ${meta["Akun"] || "-"},,,Range Waktu : ${meta["Range Waktu"] || "-"},,,,,Tanggal : ${meta["Tanggal"] || "-"}`;
+        csvRows.push(metaRow);
+        csvRows.push(""); // Baris kosong sebelum header tabel
+    }
+
+    // 3. Header Tabel (Sesuai kunci objek data ter-map)
+    const headers = Object.keys(data[0]) as (keyof T)[];
+    csvRows.push(headers.join(','));
+
+    // 4. Baris Data
     data.forEach(row => {
         const values = headers.map(header => {
             const value = row[header];
-            let escapedValue: string;
+            if (value === null || value === undefined) return '""';
             
-            if (value === null || value === undefined) {
-                escapedValue = '';
-            } else if (typeof value === 'object') {
-                // Handle complex objects like arrays by JSON stringifying them
-                escapedValue = `"${JSON.stringify(value).replace(/"/g, '""')}"`;
-            } else {
-                 // Escape quotes and wrap in quotes if it contains a comma, quote, or newline
-                escapedValue = `"${String(value).replace(/"/g, '""')}"`;
-            }
-            return escapedValue;
+            // Escape double quotes dan bungkus dengan quotes untuk menangani koma/newline dalam sel
+            const stringValue = String(value);
+            return `"${stringValue.replace(/"/g, '""')}"`;
         });
         csvRows.push(values.join(','));
     });
 
+    // Menambahkan Byte Order Mark (BOM) \uFEFF agar Excel otomatis deteksi UTF-8
     const csvString = csvRows.join('\n');
-    const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' }); // Add BOM for Excel compatibility
+    const blob = new Blob([`\uFEFF${csvString}`], { type: 'text/csv;charset=utf-8;' });
 
     const link = document.createElement('a');
     if (link.download !== undefined) {

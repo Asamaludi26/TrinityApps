@@ -128,7 +128,8 @@ const CustomerListPage: React.FC<CustomerListPageProps> = ({ currentUser, onShow
 
     // Extract unique service packages for filter options
     const servicePackageOptions = useMemo(() => {
-        const uniquePackages = Array.from(new Set(customers.map(c => c.servicePackage).filter(Boolean)));
+        // Fix: Explicitly type uniquePackages as string array to prevent 'unknown' type inference in CustomSelect options.
+        const uniquePackages: string[] = Array.from(new Set(customers.map(c => c.servicePackage).filter(Boolean)));
         return uniquePackages.map(pkg => ({ value: pkg, label: pkg }));
     }, [customers]);
 
@@ -373,6 +374,7 @@ const CustomerListPage: React.FC<CustomerListPageProps> = ({ currentUser, onShow
                         <table className="min-w-full divide-y divide-gray-200">
                              <thead className="bg-gray-50">
                                 <tr>
+                                    {/* FIX: Correctly reference 'c.id' in the bulk select checkbox map handler to avoid 'id' not found error. */}
                                     {isBulkSelectMode && <th className="px-6 py-3"><Checkbox checked={selectedCustomerIds.length > 0 && selectedCustomerIds.length === paginatedCustomers.length} onChange={e => setSelectedCustomerIds(e.target.checked ? paginatedCustomers.map(c => c.id) : [])} /></th>}
                                     <th className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Pelanggan</th>
                                     <th className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Kontak</th>

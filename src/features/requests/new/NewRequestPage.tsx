@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   Request,
@@ -20,6 +21,7 @@ import {
   Activity,
 } from "../../../types";
 import Modal from "../../../components/ui/Modal";
+import { Avatar } from "../../../components/ui/Avatar";
 import { CloseIcon } from "../../../components/icons/CloseIcon";
 import DatePicker from "../../../components/ui/DatePicker";
 import { EyeIcon } from "../../../components/icons/EyeIcon";
@@ -62,7 +64,7 @@ import { AssetIcon } from "../../../components/icons/AssetIcon";
 import { ModelManagementModal } from "../../../components/ui/ModelManagementModal";
 import { TypeManagementModal } from "../../../components/ui/TypeManagementModal";
 import { CategoryFormModal } from "../../categories/CategoryManagementPage";
-import { BsLightningFill, BsBoxSeam } from "react-icons/bs";
+import { BsLightningFill, BsBoxSeam, BsFileEarmarkSpreadsheet, BsTable, BsCalendarRange, BsPersonBadge, BsInfoCircleFill } from "react-icons/bs";
 
 // Stores
 import { useRequestStore } from "../../../stores/useRequestStore";
@@ -74,7 +76,217 @@ import { useUIStore } from "../../../stores/useUIStore";
 const canViewPrice = (role: UserRole) =>
   ["Admin Purchase", "Super Admin"].includes(role);
 
-// Only props relevant to UI navigation/callbacks that are not data/logic
+// --- COMPONENT: Export Config Modal ---
+const ExportConfigModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  currentUser: User;
+  data: Request[];
+  onConfirmExport: (mappedData: any[], filename: string, extraHeader: any) => void;
+}> = ({ isOpen, onClose, currentUser, data, onConfirmExport }) => {
+  const [rangeType, setRangeType] = useState('all');
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+
+  const rangeOptions = [
+    { value: 'all', label: 'Semua Data Permintaan (Seluruh Database)' },
+    { value: 'today', label: 'Hari Ini (Aktivitas Terbaru)' },
+    { value: 'week', label: '7 Hari Terakhir (Laporan Mingguan)' },
+    { value: 'month', label: 'Bulan Berjalan (Laporan Bulanan)' },
+    { value: 'year', label: 'Tahun Berjalan (Laporan Tahunan)' },
+    { value: 'custom', label: 'Rentang Tanggal Kustom (Pilih Manual)' },
+  ];
+
+  const filteredData = useMemo(() => {
+    const now = new Date();
+    now.setHours(23, 59, 59, 999);
+    
+    return data.filter(item => {
+      const itemDate = new Date(item.requestDate);
+      
+      switch (rangeType) {
+        case 'today':
+          return itemDate.toDateString() === now.toDateString();
+        case 'week': {
+          const weekAgo = new Date();
+          weekAgo.setDate(now.getDate() - 7);
+          return itemDate >= weekAgo && itemDate <= now;
+        }
+        case 'month':
+          return itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear();
+        case 'year':
+          return itemDate.getFullYear() === now.getFullYear();
+        case 'custom':
+          if (!startDate || !endDate) return true;
+          const start = new Date(startDate);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          return itemDate >= start && itemDate <= end;
+        default:
+          return true;
+      }
+    });
+  }, [data, rangeType, startDate, endDate]);
+
+  const totalValueSum = useMemo(() => {
+    return filteredData.reduce((sum, item) => sum + (item.totalValue || 0), 0);
+  }, [filteredData]);
+
+  const prepareMappedData = (requests: Request[]) => {
+    return requests.map((req, index) => {
+      const itemsFormatted = req.items
+        .map(i => `${i.quantity}x ${i.itemName} [${i.itemTypeBrand}]`)
+        .join('; ');
+
+      const totalQty = req.items.reduce((sum, i) => sum + i.quantity, 0);
+      const fmtDate = (d?: string | null) => d ? new Date(d).toLocaleDateString('id-ID', { 
+        day: '2-digit', month: '2-digit', year: 'numeric' 
+      }) : '-';
+
+      return {
+        'NO': index + 1,
+        'ID REQUEST': req.id,
+        'TANGGAL PENGAJUAN': fmtDate(req.requestDate),
+        'NAMA PEMOHON': req.requester.toUpperCase(),
+        'DIVISI': req.division,
+        'TIPE ORDER': req.order.type,
+        'REFERENSI PROYEK JUSTIFIKASI': req.order.project || req.order.justification || 'Reguler',
+        'STATUS DOKUMEN': req.status,
+        'DAFTAR BARANG': itemsFormatted,
+        'TOTAL UNIT': totalQty,
+        'ESTIMASI NILAI': req.totalValue || 0,
+        'ESTIMASI NILAI FORMAT': req.totalValue ? `Rp ${req.totalValue.toLocaleString('id-ID')}` : 'Rp 0',
+        'APPROVER LOGISTIK': req.logisticApprover || '-',
+        'TGL APPROVE LOGISTIK': fmtDate(req.logisticApprovalDate),
+        'APPROVER FINAL': req.finalApprover || '-',
+        'TGL APPROVE FINAL': fmtDate(req.finalApprovalDate),
+        'CATATAN REVISI TOLAK': req.rejectionReason || '-'
+      };
+    });
+  };
+
+  const handleExport = () => {
+    const now = new Date();
+    const timestamp = now.toISOString().split('T')[0].replace(/-/g, '');
+    const filename = `LAPORAN_REQUEST_${rangeType.toUpperCase()}_${timestamp}`;
+    
+    const mappedData = prepareMappedData(filteredData);
+    
+    const extraHeader = {
+        title: "LAPORAN DAFTAR REQUEST ASET",
+        metadata: {
+            "Akun": currentUser.name,
+            "Range Waktu": rangeType === 'custom' ? `${startDate?.toLocaleDateString('id-ID')} - ${endDate?.toLocaleDateString('id-ID')}` : rangeOptions.find(o => o.value === rangeType)?.label || rangeType,
+            "Tanggal Cetak": now.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+        }
+    };
+
+    onConfirmExport(mappedData, filename, extraHeader);
+    onClose();
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Export Laporan Profesional" size="lg">
+      <div className="space-y-6">
+        {/* Banner Section */}
+        <div className="flex items-center gap-5 p-6 bg-gradient-to-r from-tm-dark to-slate-800 text-white rounded-2xl shadow-lg border border-slate-700">
+          <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-md border border-white/20">
+            <BsFileEarmarkSpreadsheet className="w-12 h-12 text-tm-accent" />
+          </div>
+          <div>
+            <h4 className="font-black text-xl tracking-tight uppercase">Excel Report Engine</h4>
+            <p className="text-sm text-slate-400 mt-1">Konfigurasikan parameter laporan Anda untuk hasil yang akurat.</p>
+          </div>
+        </div>
+
+        <div className="space-y-5">
+            {/* Section 1: Filter Waktu (Full Width Row) */}
+            <div className="p-5 bg-white border border-gray-200 rounded-2xl shadow-sm hover:border-tm-accent/30 transition-colors">
+                <label className="flex items-center gap-2 text-xs font-black text-tm-primary uppercase tracking-widest mb-4">
+                    <BsCalendarRange className="w-4 h-4"/> 1. Tentukan Periode Data
+                </label>
+                <div className="space-y-4">
+                    <CustomSelect 
+                        options={rangeOptions} 
+                        value={rangeType} 
+                        onChange={setRangeType} 
+                    />
+                    
+                    {rangeType === 'custom' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl animate-fade-in-up">
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 px-1">Tanggal Mulai</label>
+                                <DatePicker id="export-start" selectedDate={startDate} onDateChange={setStartDate} />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 px-1">Tanggal Selesai</label>
+                                <DatePicker id="export-end" selectedDate={endDate} onDateChange={setEndDate} />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Section 2: Informasi Akun (Full Width Row) */}
+            <div className="p-5 bg-white border border-gray-200 rounded-2xl shadow-sm hover:border-tm-accent/30 transition-colors">
+                <label className="flex items-center gap-2 text-xs font-black text-tm-primary uppercase tracking-widest mb-4">
+                    <BsPersonBadge className="w-4 h-4"/> 2. Metadata Pembuat Laporan
+                </label>
+                <div className="flex items-center gap-4 p-4 bg-blue-50/50 border border-blue-100 rounded-xl">
+                    <Avatar name={currentUser.name} className="w-14 h-14 shadow-md border-2 border-white" />
+                    <div className="min-w-0">
+                        <p className="text-lg font-extrabold text-tm-dark truncate leading-tight">{currentUser.name}</p>
+                        <p className="text-xs text-gray-500 uppercase font-bold tracking-tighter mt-1">{currentUser.role} &bull; PT. Triniti Media Indonesia</p>
+                    </div>
+                    <div className="ml-auto hidden sm:block">
+                        <div className="flex items-center gap-1 px-2 py-1 bg-white border rounded-lg text-[10px] font-mono font-bold text-tm-primary">
+                            VALIDATED
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Section 3: Summary Statistics (Footer Highlight) */}
+            <div className="bg-slate-900 rounded-2xl overflow-hidden shadow-xl">
+                <div className="px-5 py-2.5 bg-slate-800/50 border-b border-white/5">
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Live Export Statistics</p>
+                </div>
+                <div className="p-5 grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                        <span className="text-[10px] text-slate-500 uppercase font-bold">Baris Ditemukan</span>
+                        <p className="text-2xl font-black text-white">{filteredData.length} <span className="text-xs font-medium text-slate-400">Request</span></p>
+                    </div>
+                    <div className="space-y-1 border-l border-white/10 pl-4">
+                        <span className="text-[10px] text-slate-500 uppercase font-bold">Akumulasi Nilai</span>
+                        <p className="text-2xl font-black text-tm-accent truncate">Rp {totalValueSum.toLocaleString('id-ID')}</p>
+                    </div>
+                </div>
+                <div className="px-5 py-3 bg-tm-primary/10 flex items-center gap-2">
+                    <BsInfoCircleFill className="text-tm-accent w-3 h-3" />
+                    <p className="text-[10px] text-slate-400 font-medium italic">Format file: CSV UTF-8 with Byte Order Mark (BOM) untuk kompatibilitas Excel penuh.</p>
+                </div>
+            </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 pt-4">
+          <button onClick={onClose} className="order-2 sm:order-1 flex-1 px-6 py-3.5 text-sm font-black text-gray-600 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all uppercase tracking-widest">Batal</button>
+          <button 
+            onClick={handleExport} 
+            disabled={filteredData.length === 0}
+            className="order-1 sm:order-2 flex-[2] inline-flex items-center justify-center gap-3 px-6 py-3.5 text-sm font-black text-white bg-tm-primary rounded-xl shadow-lg shadow-tm-primary/25 hover:bg-tm-primary-hover disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed transition-all transform active:scale-95 uppercase tracking-widest"
+          >
+            <BsTable className="w-5 h-5" />
+            Download Laporan
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+// --- MAIN PAGE COMPONENT ---
 interface NewRequestPageProps {
   currentUser: User;
   onInitiateRegistration: (
@@ -89,7 +301,7 @@ interface NewRequestPageProps {
   markNotificationsAsRead: (referenceId: string) => void;
 }
 
-const SortableHeader: React.FC<{
+const SortableHeaderComp: React.FC<{
   children: React.ReactNode;
   columnKey: keyof Request;
   sortConfig: SortConfig<Request> | null;
@@ -182,33 +394,33 @@ const RequestTable: React.FC<RequestTableProps> = ({
               />
             </th>
           )}
-          <SortableHeader
+          <SortableHeaderComp
             columnKey="id"
             sortConfig={sortConfig}
             requestSort={requestSort}
           >
             ID / Tanggal
-          </SortableHeader>
-          <SortableHeader
+          </SortableHeaderComp>
+          <SortableHeaderComp
             columnKey="requester"
             sortConfig={sortConfig}
             requestSort={requestSort}
           >
             Pemohon
-          </SortableHeader>
+          </SortableHeaderComp>
           <th
             scope="col"
             className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500"
           >
             Detail Permintaan
           </th>
-          <SortableHeader
+          <SortableHeaderComp
             columnKey="status"
             sortConfig={sortConfig}
             requestSort={requestSort}
           >
             Status
-          </SortableHeader>
+          </SortableHeaderComp>
           <th scope="col" className="relative px-6 py-3">
             <span className="sr-only">Aksi</span>
           </th>
@@ -995,7 +1207,7 @@ const RequestForm: React.FC<{
                     type="number"
                     value={item.stock}
                     readOnly
-                    className="block w-full px-3 py-2 mt-1 text-gray-700 bg-gray-100 border border-gray-200 rounded-lg sm:text-sm"
+                    className="block w-full px-3 py-2 mt-1 text-gray-700 bg-gray-100 border border-gray-200 rounded-lg shadow-sm sm:text-sm"
                   />
                 </div>
                 <div className="md:col-span-3">
@@ -1026,7 +1238,7 @@ const RequestForm: React.FC<{
                     onChange={(e) =>
                       handleItemChange(item.id, "keterangan", e.target.value)
                     }
-                    className="block w-full px-3 py-2 mt-1 text-gray-900 bg-gray-50 border border-gray-300 rounded-lg sm:text-sm"
+                    className="block w-full px-3 py-2 mt-1 text-gray-900 bg-gray-50 border border-gray-300 rounded-lg shadow-sm sm:text-sm"
                     placeholder="Contoh: Warna Hitam, RAM 8GB..."
                   />
                 </div>
@@ -1139,6 +1351,7 @@ const NewRequestPage: React.FC<NewRequestPageProps> = (props) => {
     const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([]);
     
     const [requestToDelete, setRequestToDelete] = useState<string | null>(null);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const addNotification = useNotification();
 
@@ -1307,7 +1520,10 @@ const NewRequestPage: React.FC<NewRequestPageProps> = (props) => {
             <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
                 <h1 className="text-3xl font-bold text-tm-dark">Daftar Request</h1>
                 <div className="flex items-center space-x-2">
-                    <button onClick={() => exportToCSV(sortedRequests, 'daftar_request.csv')} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border rounded-lg shadow-sm hover:bg-gray-50">
+                    <button 
+                      onClick={() => setIsExportModalOpen(true)} 
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border rounded-lg shadow-sm hover:bg-gray-50"
+                    >
                         <ExportIcon className="w-4 h-4"/> Export CSV
                     </button>
                     <button onClick={() => setView('form')} className="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 rounded-lg shadow-sm bg-tm-primary hover:bg-tm-primary-hover">
@@ -1379,7 +1595,7 @@ const NewRequestPage: React.FC<NewRequestPageProps> = (props) => {
                     </div>
                 </div>
 
-                {/* ACTIVE FILTER CHIPS (New) */}
+                {/* ACTIVE FILTER CHIPS */}
                 {activeFilterCount > 0 && (
                     <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 animate-fade-in-up">
                         {filters.status && (
@@ -1395,7 +1611,7 @@ const NewRequestPage: React.FC<NewRequestPageProps> = (props) => {
                             </span>
                         )}
                         {filters.division && (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-100 rounded-full">
+                            <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-orange-700 bg-blue-50 border border-blue-100 rounded-full">
                                 Divisi: <span className="font-bold">{filters.division}</span>
                                 <button onClick={() => handleRemoveFilter('division')} className="p-0.5 ml-1 rounded-full hover:bg-orange-200 text-orange-500"><CloseIcon className="w-3 h-3" /></button>
                             </span>
@@ -1432,6 +1648,16 @@ const NewRequestPage: React.FC<NewRequestPageProps> = (props) => {
                 <Modal isOpen={!!requestToDelete} onClose={() => setRequestToDelete(null)} title="Konfirmasi Hapus" footerContent={<><button onClick={() => setRequestToDelete(null)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Batal</button><button onClick={handleDeleteRequest} disabled={isLoading} className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-danger rounded-lg shadow-sm hover:bg-red-700">{isLoading && <SpinnerIcon className="w-4 h-4 mr-2"/>}Hapus</button></>}>
                     <p className="text-sm text-gray-600">Anda yakin ingin menghapus request <strong>{requestToDelete}</strong>? Tindakan ini tidak dapat diurungkan.</p>
                 </Modal>
+            )}
+
+            {isExportModalOpen && (
+              <ExportConfigModal 
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                currentUser={currentUser}
+                data={sortedRequests}
+                onConfirmExport={exportToCSV}
+              />
             )}
         </div>
     );
