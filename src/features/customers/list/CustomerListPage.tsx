@@ -68,7 +68,7 @@ const CustomerListPage: React.FC<CustomerListPageProps> = ({ currentUser, onShow
     }, []);
 
     const [searchQuery, setSearchQuery] = useState('');
-    const initialFilterState = { status: '' };
+    const initialFilterState = { status: '', servicePackage: '' };
     const [filters, setFilters] = useState(initialFilterState);
     const [tempFilters, setTempFilters] = useState(filters);
     const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
@@ -121,6 +121,17 @@ const CustomerListPage: React.FC<CustomerListPageProps> = ({ currentUser, onShow
         setIsFilterPanelOpen(false);
     };
 
+    const handleRemoveFilter = (key: keyof typeof filters) => {
+        setFilters((prev) => ({ ...prev, [key]: "" }));
+        setTempFilters((prev) => ({ ...prev, [key]: "" }));
+    };
+
+    // Extract unique service packages for filter options
+    const servicePackageOptions = useMemo(() => {
+        const uniquePackages = Array.from(new Set(customers.map(c => c.servicePackage).filter(Boolean)));
+        return uniquePackages.map(pkg => ({ value: pkg, label: pkg }));
+    }, [customers]);
+
     const summary = useMemo(() => {
         const counts = {
             [CustomerStatus.ACTIVE]: 0,
@@ -150,7 +161,11 @@ const CustomerListPage: React.FC<CustomerListPageProps> = ({ currentUser, onShow
                     c.address.toLowerCase().includes(searchLower)
                 );
             })
-            .filter(c => filters.status ? c.status === filters.status : true);
+            .filter(c => {
+                const matchStatus = filters.status ? c.status === filters.status : true;
+                const matchPackage = filters.servicePackage ? c.servicePackage === filters.servicePackage : true;
+                return matchStatus && matchPackage;
+            });
     }, [sortedCustomers, searchQuery, filters]);
     
     const totalItems = filteredCustomers.length;
@@ -284,7 +299,9 @@ const CustomerListPage: React.FC<CustomerListPageProps> = ({ currentUser, onShow
                            {/* Filter button logic */}
                            <button
                                 onClick={() => { setTempFilters(filters); setIsFilterPanelOpen(p => !p); }}
-                                className="inline-flex items-center justify-center gap-2 w-full h-10 px-4 text-sm font-semibold text-gray-700 transition-all duration-200 bg-white border border-gray-300 rounded-lg shadow-sm sm:w-auto hover:bg-gray-50"
+                                className={`inline-flex items-center justify-center gap-2 w-full h-10 px-4 text-sm font-semibold transition-all duration-200 border rounded-lg shadow-sm sm:w-auto 
+                                    ${activeFilterCount > 0 ? 'bg-tm-light border-tm-accent text-tm-primary' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}
+                                `}
                             >
                                 <FilterIcon className="w-4 h-4" /> <span>Filter</span> {activeFilterCount > 0 && <span className="px-2 py-0.5 text-xs font-bold text-white rounded-full bg-tm-primary">{activeFilterCount}</span>}
                             </button>
@@ -299,7 +316,11 @@ const CustomerListPage: React.FC<CustomerListPageProps> = ({ currentUser, onShow
                                         <div className="p-4 space-y-4">
                                             <div>
                                                 <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
-                                                <CustomSelect options={[{value: '', label: 'Semua'}, ...Object.values(CustomerStatus).map(s => ({value: s, label: s}))]} value={tempFilters.status} onChange={v => setTempFilters(f => ({...f, status: v}))} />
+                                                <CustomSelect options={[{value: '', label: 'Semua Status'}, ...Object.values(CustomerStatus).map(s => ({value: s, label: s}))]} value={tempFilters.status} onChange={v => setTempFilters(f => ({...f, status: v}))} />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Paket Layanan</label>
+                                                <CustomSelect options={[{value: '', label: 'Semua Paket'}, ...servicePackageOptions]} value={tempFilters.servicePackage} onChange={v => setTempFilters(f => ({...f, servicePackage: v}))} />
                                             </div>
                                         </div>
                                         <div className="flex items-center justify-between p-4 bg-gray-50 border-t">
@@ -311,6 +332,25 @@ const CustomerListPage: React.FC<CustomerListPageProps> = ({ currentUser, onShow
                             )}
                         </div>
                     </div>
+
+                    {/* Active Filter Chips */}
+                    {activeFilterCount > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 animate-fade-in-up mt-3">
+                            {filters.status && (
+                                <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-full">
+                                    Status: <span className="font-bold">{filters.status}</span>
+                                    <button onClick={() => handleRemoveFilter('status')} className="p-0.5 ml-1 rounded-full hover:bg-blue-200 text-blue-500"><CloseIcon className="w-3 h-3" /></button>
+                                </span>
+                            )}
+                            {filters.servicePackage && (
+                                <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-100 rounded-full">
+                                    Paket: <span className="font-bold">{filters.servicePackage}</span>
+                                    <button onClick={() => handleRemoveFilter('servicePackage')} className="p-0.5 ml-1 rounded-full hover:bg-purple-200 text-purple-500"><CloseIcon className="w-3 h-3" /></button>
+                                </span>
+                            )}
+                            <button onClick={handleResetFilters} className="text-xs text-gray-500 hover:text-red-600 hover:underline px-2 py-1">Hapus Semua</button>
+                        </div>
+                    )}
                 </div>
 
                 {isBulkSelectMode && (
@@ -336,6 +376,7 @@ const CustomerListPage: React.FC<CustomerListPageProps> = ({ currentUser, onShow
                                     {isBulkSelectMode && <th className="px-6 py-3"><Checkbox checked={selectedCustomerIds.length > 0 && selectedCustomerIds.length === paginatedCustomers.length} onChange={e => setSelectedCustomerIds(e.target.checked ? paginatedCustomers.map(c => c.id) : [])} /></th>}
                                     <th className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Pelanggan</th>
                                     <th className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Kontak</th>
+                                    <th className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Paket</th>
                                     <th className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Jumlah Aset</th>
                                     <th className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Status</th>
                                     <th className="relative px-6 py-3"><span className="sr-only">Aksi</span></th>
@@ -354,6 +395,9 @@ const CustomerListPage: React.FC<CustomerListPageProps> = ({ currentUser, onShow
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="text-sm text-gray-800">{customer.phone}</div>
                                             <div className="text-xs text-gray-500">{customer.address}</div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="text-sm text-gray-800 font-medium">{customer.servicePackage}</div>
                                         </td>
                                         <td className="px-6 py-4 text-sm font-medium text-center text-gray-800 whitespace-nowrap">
                                             {assetCount > 0 ? (

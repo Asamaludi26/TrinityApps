@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Page, User, Installation, Customer, Asset, PreviewData, ItemStatus, InstallationAsset, InstallationMaterial, AssetStatus, AssetCategory, Division } from '../../../types';
 import { useSortableData, SortConfig } from '../../../hooks/useSortableData';
@@ -23,6 +22,8 @@ import { DetailPageLayout } from '../../../components/layout/DetailPageLayout';
 import { ClickableLink } from '../../../components/ui/ClickableLink';
 import { FileSignatureIcon } from '../../../components/icons/FileSignatureIcon';
 import { PlusIcon } from '../../../components/icons/PlusIcon';
+import { FilterIcon } from '../../../components/icons/FilterIcon';
+import { CloseIcon } from '../../../components/icons/CloseIcon';
 
 // Stores
 import { useTransactionStore } from '../../../stores/useTransactionStore';
@@ -658,6 +659,49 @@ const InstallationFormPage: React.FC<InstallationFormPageProps> = (props) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
     const addNotification = useNotification();
+    
+    // Filter State
+    const initialFilterState = { technician: '', startDate: null, endDate: null };
+    const [filters, setFilters] = useState<{ technician: string; startDate: Date | null; endDate: Date | null; }>(initialFilterState);
+    const [tempFilters, setTempFilters] = useState(filters);
+    const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+    const filterPanelRef = useRef<HTMLDivElement>(null);
+
+     useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (filterPanelRef.current && !filterPanelRef.current.contains(event.target as Node)) {
+                setIsFilterPanelOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => { document.removeEventListener("mousedown", handleClickOutside); };
+    }, [filterPanelRef]);
+
+    const activeFilterCount = useMemo(() => {
+        return Object.values(filters).filter(Boolean).length;
+    }, [filters]);
+
+    const handleResetFilters = () => {
+        setFilters(initialFilterState);
+        setTempFilters(initialFilterState);
+        setIsFilterPanelOpen(false);
+    };
+
+    const handleApplyFilters = () => {
+        setFilters(tempFilters);
+        setIsFilterPanelOpen(false);
+    };
+    
+    const handleRemoveFilter = (key: keyof typeof filters) => {
+        setFilters((prev) => ({ ...prev, [key]: key === 'startDate' || key === 'endDate' ? null : "" }));
+        setTempFilters((prev) => ({ ...prev, [key]: key === 'startDate' || key === 'endDate' ? null : "" }));
+    };
+
+    const technicianOptions = useMemo(() => {
+         const techNames = Array.from(new Set(users.filter(u => u.divisionId === 3).map(u => u.name)));
+         return techNames.map(name => ({ value: name, label: name }));
+    }, [users]);
+
 
     useEffect(() => {
         if (prefillCustomerId) {
@@ -724,7 +768,10 @@ const InstallationFormPage: React.FC<InstallationFormPageProps> = (props) => {
                       (em) => em.itemName === newMat.itemName && em.brand === newMat.brand
                     );
                     if (existingMatIndex > -1) {
-                      updatedMaterials[existingMatIndex].quantity += newMat.quantity;
+                      updatedMaterials[existingMatIndex] = {
+                        ...updatedMaterials[existingMatIndex],
+                        quantity: updatedMaterials[existingMatIndex].quantity + newMat.quantity,
+                      };
                     } else {
                       updatedMaterials.push({
                         ...newMat,
@@ -746,13 +793,29 @@ const InstallationFormPage: React.FC<InstallationFormPageProps> = (props) => {
         if (currentUser.role === 'Staff') {
             tempInstallations = tempInstallations.filter(inst => inst.technician === currentUser.name);
         }
-        return tempInstallations.filter(inst => {
-            const searchLower = searchQuery.toLowerCase();
-            return inst.docNumber.toLowerCase().includes(searchLower) ||
-                   inst.customerName.toLowerCase().includes(searchLower) ||
-                   inst.technician.toLowerCase().includes(searchLower);
-        });
-    }, [installations, searchQuery, currentUser]);
+        return tempInstallations
+            .filter(inst => {
+                const searchLower = searchQuery.toLowerCase();
+                return inst.docNumber.toLowerCase().includes(searchLower) ||
+                       inst.customerName.toLowerCase().includes(searchLower) ||
+                       inst.technician.toLowerCase().includes(searchLower);
+            })
+            .filter(inst => {
+                let isMatch = true;
+                if (filters.technician) isMatch = isMatch && inst.technician === filters.technician;
+                if (filters.startDate) {
+                     const start = new Date(filters.startDate); start.setHours(0,0,0,0);
+                     const instDate = new Date(inst.installationDate); instDate.setHours(0,0,0,0);
+                     isMatch = isMatch && instDate >= start;
+                }
+                if (filters.endDate) {
+                     const end = new Date(filters.endDate); end.setHours(23,59,59,999);
+                     const instDate = new Date(inst.installationDate);
+                     isMatch = isMatch && instDate <= end;
+                }
+                return isMatch;
+            });
+    }, [installations, searchQuery, currentUser, filters]);
 
     const { items: sortedInstallations, requestSort, sortConfig } = useSortableData<Installation>(filteredInstallations, { key: 'installationDate', direction: 'descending' });
 
@@ -810,8 +873,72 @@ const InstallationFormPage: React.FC<InstallationFormPageProps> = (props) => {
                 </button>
             </div>
             <div className="p-4 mb-4 bg-white border border-gray-200/80 rounded-xl shadow-md">
-                <div className="relative"><SearchIcon className="absolute w-5 h-5 text-gray-400 transform -translate-y-1/2 top-1/2 left-3" /><input type="text" placeholder="Cari No. Dokumen, Pelanggan, Teknisi..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-10 py-2 pl-10 pr-4 text-sm text-gray-900 bg-gray-50 border border-gray-300 rounded-lg focus:ring-tm-accent focus:border-tm-accent" /></div>
+                <div className="flex flex-wrap items-center gap-4">
+                     <div className="relative flex-grow">
+                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"> <SearchIcon className="w-5 h-5 text-gray-400" /> </div>
+                        <input type="text" placeholder="Cari No. Dokumen, Pelanggan, Teknisi..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-10 py-2 pl-10 pr-4 text-sm text-gray-900 bg-gray-50 border border-gray-300 rounded-lg focus:ring-tm-accent focus:border-tm-accent" />
+                    </div>
+                    <div className="relative" ref={filterPanelRef}>
+                        <button
+                            onClick={() => { setTempFilters(filters); setIsFilterPanelOpen(p => !p); }}
+                            className={`inline-flex items-center justify-center gap-2 h-10 px-4 text-sm font-semibold transition-all duration-200 border rounded-lg shadow-sm sm:w-auto 
+                                ${activeFilterCount > 0 ? 'bg-tm-light border-tm-accent text-tm-primary' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}
+                            `}
+                        >
+                            <FilterIcon className="w-4 h-4" /> <span>Filter</span> {activeFilterCount > 0 && <span className="px-1.5 py-0.5 text-[10px] font-bold text-white rounded-full bg-tm-primary">{activeFilterCount}</span>}
+                        </button>
+                        {isFilterPanelOpen && (
+                            <>
+                                <div onClick={() => setIsFilterPanelOpen(false)} className="fixed inset-0 z-20 bg-black/25 sm:hidden" />
+                                <div className="fixed top-32 inset-x-4 z-30 origin-top rounded-xl border border-gray-200 bg-white shadow-lg sm:absolute sm:top-full sm:inset-x-auto sm:right-0 sm:mt-2 sm:w-72">
+                                    <div className="flex items-center justify-between p-4 border-b">
+                                        <h3 className="text-lg font-semibold text-gray-800">Filter Instalasi</h3>
+                                        <button onClick={() => setIsFilterPanelOpen(false)} className="p-1 text-gray-400 rounded-full hover:bg-gray-100"><CloseIcon className="w-5 h-5"/></button>
+                                    </div>
+                                    <div className="p-4 space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Teknisi</label>
+                                            <CustomSelect options={[{value: '', label: 'Semua Teknisi'}, ...technicianOptions]} value={tempFilters.technician} onChange={v => setTempFilters(f => ({...f, technician: v}))} />
+                                        </div>
+                                         <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Tanggal Mulai</label>
+                                            <DatePicker id="filterStartDate" selectedDate={tempFilters.startDate} onDateChange={date => setTempFilters(f => ({...f, startDate: date}))} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Tanggal Akhir</label>
+                                            <DatePicker id="filterEndDate" selectedDate={tempFilters.endDate} onDateChange={date => setTempFilters(f => ({...f, endDate: date}))} />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between p-4 bg-gray-50 border-t">
+                                        <button onClick={handleResetFilters} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Reset</button>
+                                        <button onClick={handleApplyFilters} className="px-4 py-2 text-sm font-semibold text-white bg-tm-primary rounded-lg shadow-sm hover:bg-tm-primary-hover">Terapkan</button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {/* ACTIVE FILTER CHIPS */}
+                {activeFilterCount > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 animate-fade-in-up mt-3">
+                        {filters.technician && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-full">
+                                Teknisi: <span className="font-bold">{filters.technician}</span>
+                                <button onClick={() => handleRemoveFilter('technician')} className="p-0.5 ml-1 rounded-full hover:bg-blue-200 text-blue-500"><CloseIcon className="w-3 h-3" /></button>
+                            </span>
+                        )}
+                        {(filters.startDate || filters.endDate) && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-100 rounded-full">
+                                Tanggal: <span className="font-bold">{filters.startDate ? new Date(filters.startDate).toLocaleDateString('id-ID') : '...'} - {filters.endDate ? new Date(filters.endDate).toLocaleDateString('id-ID') : '...'}</span>
+                                <button onClick={() => { handleRemoveFilter('startDate'); handleRemoveFilter('endDate'); }} className="p-0.5 ml-1 rounded-full hover:bg-purple-200 text-purple-500"><CloseIcon className="w-3 h-3" /></button>
+                            </span>
+                        )}
+                         <button onClick={handleResetFilters} className="text-xs text-gray-500 hover:text-red-600 hover:underline px-2 py-1">Hapus Semua</button>
+                    </div>
+                )}
             </div>
+            
             <div className="overflow-hidden bg-white border border-gray-200/80 rounded-xl shadow-md">
                 <div className="overflow-x-auto custom-scrollbar">
                     {paginatedInstallations.length > 0 ? (

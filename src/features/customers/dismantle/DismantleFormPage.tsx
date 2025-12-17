@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Dismantle, ItemStatus, Asset, AssetStatus, AssetCondition, Customer, User, ActivityLogEntry, PreviewData, Page, Attachment } from '../../../types';
 import Modal from '../../../components/ui/Modal';
@@ -20,6 +21,9 @@ import { PaginationControls } from '../../../components/ui/PaginationControls';
 import { ExclamationTriangleIcon } from '../../../components/icons/ExclamationTriangleIcon';
 import DismantleForm from './DismantleForm';
 import DismantleDetailPage from './DismantleDetailPage';
+import { FilterIcon } from '../../../components/icons/FilterIcon';
+import { CustomSelect } from '../../../components/ui/CustomSelect';
+import DatePicker from '../../../components/ui/DatePicker';
 
 // Stores
 import { useTransactionStore } from '../../../stores/useTransactionStore';
@@ -218,6 +222,7 @@ const DismantleFormPage: React.FC<DismantleFormPageProps> = (props) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
     
+    // Filter State
     const initialFilterState = { status: '', technician: '', startDate: null, endDate: null };
     const [filters, setFilters] = useState<{ status: string; technician: string; startDate: Date | null; endDate: Date | null; }>(initialFilterState);
     const [tempFilters, setTempFilters] = useState(filters);
@@ -260,6 +265,10 @@ const DismantleFormPage: React.FC<DismantleFormPageProps> = (props) => {
         setSelectedDismantleIds([]);
     };
     
+    const activeFilterCount = useMemo(() => {
+        return Object.values(filters).filter(Boolean).length;
+    }, [filters]);
+
     const handleResetFilters = () => {
         setFilters(initialFilterState);
         setTempFilters(initialFilterState);
@@ -269,6 +278,11 @@ const DismantleFormPage: React.FC<DismantleFormPageProps> = (props) => {
     const handleApplyFilters = () => {
         setFilters(tempFilters);
         setIsFilterPanelOpen(false);
+    };
+
+    const handleRemoveFilter = (key: keyof typeof filters) => {
+        setFilters((prev) => ({ ...prev, [key]: key === 'startDate' || key === 'endDate' ? null : "" }));
+        setTempFilters((prev) => ({ ...prev, [key]: key === 'startDate' || key === 'endDate' ? null : "" }));
     };
 
     // --- DATA MANIPULATION HANDLERS (CRUD) ---
@@ -400,15 +414,32 @@ const DismantleFormPage: React.FC<DismantleFormPageProps> = (props) => {
                 );
             })
             .filter(d => {
-                if (!filters.status && !filters.technician && !filters.startDate && !filters.endDate) return true;
                 let isMatch = true;
                 if (filters.status) isMatch = isMatch && d.status === filters.status;
                 if (filters.technician) isMatch = isMatch && d.technician === filters.technician;
-                if (filters.startDate) isMatch = isMatch && new Date(d.dismantleDate) >= filters.startDate;
-                if (filters.endDate) isMatch = isMatch && new Date(d.dismantleDate) <= filters.endDate;
+                if (filters.startDate) {
+                     const start = new Date(filters.startDate); start.setHours(0,0,0,0);
+                     const dDate = new Date(d.dismantleDate); dDate.setHours(0,0,0,0);
+                     isMatch = isMatch && dDate >= start;
+                }
+                if (filters.endDate) {
+                     const end = new Date(filters.endDate); end.setHours(23,59,59,999);
+                     const dDate = new Date(d.dismantleDate);
+                     isMatch = isMatch && dDate <= end;
+                }
                 return isMatch;
             });
     }, [dismantles, searchQuery, filters, currentUser]);
+
+    const technicianOptions = useMemo(() => {
+         const techNames = Array.from(new Set(users.filter(u => u.divisionId === 3).map(u => u.name)));
+         return techNames.map(name => ({ value: name, label: name }));
+    }, [users]);
+    
+    const statusOptions = [
+         { value: ItemStatus.COMPLETED, label: 'Selesai' },
+         { value: ItemStatus.IN_PROGRESS, label: 'Menunggu Penerimaan' },
+    ];
 
     const { items: sortedDismantles, requestSort, sortConfig } = useSortableData<Dismantle>(filteredDismantles, { key: 'dismantleDate', direction: 'descending' });
     const totalItems = sortedDismantles.length;
@@ -513,15 +544,94 @@ const DismantleFormPage: React.FC<DismantleFormPageProps> = (props) => {
                         />
                     </div>
                      <div className="relative" ref={filterPanelRef}>
-                        {/* Filter Button and Panel here */}
+                        <button
+                            onClick={() => { setTempFilters(filters); setIsFilterPanelOpen(p => !p); }}
+                            className={`inline-flex items-center justify-center gap-2 h-10 px-4 text-sm font-semibold transition-all duration-200 border rounded-lg shadow-sm sm:w-auto 
+                                ${activeFilterCount > 0 ? 'bg-tm-light border-tm-accent text-tm-primary' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}
+                            `}
+                        >
+                            <FilterIcon className="w-4 h-4" /> <span>Filter</span> {activeFilterCount > 0 && <span className="px-1.5 py-0.5 text-[10px] font-bold text-white rounded-full bg-tm-primary">{activeFilterCount}</span>}
+                        </button>
+                         {isFilterPanelOpen && (
+                            <>
+                                <div onClick={() => setIsFilterPanelOpen(false)} className="fixed inset-0 z-20 bg-black/25 sm:hidden" />
+                                <div className="fixed top-32 inset-x-4 z-30 origin-top rounded-xl border border-gray-200 bg-white shadow-lg sm:absolute sm:top-full sm:inset-x-auto sm:right-0 sm:mt-2 sm:w-72">
+                                    <div className="flex items-center justify-between p-4 border-b">
+                                        <h3 className="text-lg font-semibold text-gray-800">Filter Dismantle</h3>
+                                        <button onClick={() => setIsFilterPanelOpen(false)} className="p-1 text-gray-400 rounded-full hover:bg-gray-100"><CloseIcon className="w-5 h-5"/></button>
+                                    </div>
+                                    <div className="p-4 space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+                                            <CustomSelect options={[{value: '', label: 'Semua Status'}, ...statusOptions]} value={tempFilters.status} onChange={v => setTempFilters(f => ({...f, status: v}))} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Teknisi</label>
+                                            <CustomSelect options={[{value: '', label: 'Semua Teknisi'}, ...technicianOptions]} value={tempFilters.technician} onChange={v => setTempFilters(f => ({...f, technician: v}))} />
+                                        </div>
+                                         <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Tanggal Mulai</label>
+                                            <DatePicker id="filterStartDate" selectedDate={tempFilters.startDate} onDateChange={date => setTempFilters(f => ({...f, startDate: date}))} />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Tanggal Akhir</label>
+                                            <DatePicker id="filterEndDate" selectedDate={tempFilters.endDate} onDateChange={date => setTempFilters(f => ({...f, endDate: date}))} />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between p-4 bg-gray-50 border-t">
+                                        <button onClick={handleResetFilters} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Reset</button>
+                                        <button onClick={handleApplyFilters} className="px-4 py-2 text-sm font-semibold text-white bg-tm-primary rounded-lg shadow-sm hover:bg-tm-primary-hover">Terapkan</button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
+
+                {/* ACTIVE FILTER CHIPS */}
+                {activeFilterCount > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 animate-fade-in-up mt-3">
+                         {filters.status && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-full">
+                                Status: <span className="font-bold">{filters.status === ItemStatus.IN_PROGRESS ? 'Menunggu' : 'Selesai'}</span>
+                                <button onClick={() => handleRemoveFilter('status')} className="p-0.5 ml-1 rounded-full hover:bg-blue-200 text-blue-500"><CloseIcon className="w-3 h-3" /></button>
+                            </span>
+                        )}
+                        {filters.technician && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-full">
+                                Teknisi: <span className="font-bold">{filters.technician}</span>
+                                <button onClick={() => handleRemoveFilter('technician')} className="p-0.5 ml-1 rounded-full hover:bg-indigo-200 text-indigo-500"><CloseIcon className="w-3 h-3" /></button>
+                            </span>
+                        )}
+                        {(filters.startDate || filters.endDate) && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-100 rounded-full">
+                                Tanggal: <span className="font-bold">{filters.startDate ? new Date(filters.startDate).toLocaleDateString('id-ID') : '...'} - {filters.endDate ? new Date(filters.endDate).toLocaleDateString('id-ID') : '...'}</span>
+                                <button onClick={() => { handleRemoveFilter('startDate'); handleRemoveFilter('endDate'); }} className="p-0.5 ml-1 rounded-full hover:bg-purple-200 text-purple-500"><CloseIcon className="w-3 h-3" /></button>
+                            </span>
+                        )}
+                         <button onClick={handleResetFilters} className="text-xs text-gray-500 hover:text-red-600 hover:underline px-2 py-1">Hapus Semua</button>
+                    </div>
+                )}
             </div>
 
             {/* Bulk Action Bar */}
              {isBulkSelectMode && (
                 <div className="p-4 mb-4 bg-blue-50 border-l-4 border-tm-accent rounded-r-lg">
-                    {/* Bulk action buttons */}
+                     <div className="flex flex-wrap items-center justify-between gap-3">
+                         <div className="flex flex-wrap items-center gap-3">
+                            <span className="text-sm font-medium text-tm-primary">{selectedDismantleIds.length} item terpilih</span>
+                            <div className="h-5 border-l border-gray-300"></div>
+                            <button
+                                onClick={() => setBulkDeleteConfirmation(true)}
+                                className="px-3 py-1.5 text-sm font-semibold text-danger-text bg-danger-light rounded-md hover:bg-red-200"
+                            >
+                                Hapus
+                            </button>
+                        </div>
+                        <button onClick={handleCancelBulkMode} className="px-3 py-1.5 text-sm font-semibold text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300">
+                            Batal
+                        </button>
+                    </div>
                 </div>
             )}
 

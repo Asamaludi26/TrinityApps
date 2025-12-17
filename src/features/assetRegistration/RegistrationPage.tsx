@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Asset, AssetStatus, AssetCondition, Attachment, Request, User, ActivityLogEntry, PreviewData, AssetCategory, StandardItem, Page, AssetType, RequestItem, ParsedScanResult } from '../../types';
 import DatePicker from '../../components/ui/DatePicker';
@@ -657,12 +656,30 @@ const ItemRegistration: React.FC<ItemRegistrationProps> = (props) => {
 
     // Filter/Sort/Search state
     const [searchQuery, setSearchQuery] = useState('');
-    const [filters, setFilters] = useState({ category: '', status: '' });
+    
+    // State Filter Logic (Baru)
+    const initialFilterState = { category: '', status: '', condition: '' };
+    const [filters, setFilters] = useState(initialFilterState);
+    const [tempFilters, setTempFilters] = useState(filters);
+    const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+    const filterPanelRef = useRef<HTMLDivElement>(null);
+
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
     const [isBulkSelectMode, setIsBulkSelectMode] = useState(false);
     const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
     
+    // Filter click outside effect
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (filterPanelRef.current && !filterPanelRef.current.contains(event.target as Node)) {
+                setIsFilterPanelOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => { document.removeEventListener("mousedown", handleClickOutside); };
+    }, [filterPanelRef]);
+
     useEffect(() => {
         if (prefillData || itemToEdit) {
             if (itemToEdit) {
@@ -673,15 +690,20 @@ const ItemRegistration: React.FC<ItemRegistrationProps> = (props) => {
         }
     }, [prefillData, itemToEdit, assets]);
 
-    // Sorting
+    // Sorting and Filtering
     const { items: sortedAssets, requestSort, sortConfig } = useSortableData<Asset>(
         assets.filter(a => {
             const searchLower = searchQuery.toLowerCase();
-            return (
-                (a.name.toLowerCase().includes(searchLower) || a.id.toLowerCase().includes(searchLower)) &&
-                (filters.category ? a.category === filters.category : true) &&
-                (filters.status ? a.status === filters.status : true)
+            const matchesSearch = (
+                a.name.toLowerCase().includes(searchLower) || 
+                a.id.toLowerCase().includes(searchLower)
             );
+            
+            const matchesCategory = filters.category ? a.category === filters.category : true;
+            const matchesStatus = filters.status ? a.status === filters.status : true;
+            const matchesCondition = filters.condition ? a.condition === filters.condition : true;
+
+            return matchesSearch && matchesCategory && matchesStatus && matchesCondition;
         }), 
         { key: 'registrationDate', direction: 'descending' }
     );
@@ -692,6 +714,34 @@ const ItemRegistration: React.FC<ItemRegistrationProps> = (props) => {
     }, [sortedAssets, currentPage, itemsPerPage]);
 
     const totalPages = Math.ceil(sortedAssets.length / itemsPerPage);
+
+    // Filter Logic Functions
+    const activeFilterCount = useMemo(() => {
+        return Object.values(filters).filter(Boolean).length;
+    }, [filters]);
+
+    const handleApplyFilters = () => {
+        setFilters(tempFilters);
+        setIsFilterPanelOpen(false);
+        setCurrentPage(1); // Reset page on filter
+    };
+
+    const handleResetFilters = () => {
+        setFilters(initialFilterState);
+        setTempFilters(initialFilterState);
+        setIsFilterPanelOpen(false);
+        setCurrentPage(1);
+    };
+
+    const handleRemoveFilter = (key: keyof typeof filters) => {
+        setFilters((prev) => ({ ...prev, [key]: "" }));
+        setTempFilters((prev) => ({ ...prev, [key]: "" }));
+    };
+
+    // --- Options for Filters ---
+    const categoryFilterOptions = useMemo(() => categories.map(c => ({ value: c.name, label: c.name })), [categories]);
+    const statusFilterOptions = Object.values(AssetStatus).map(s => ({ value: s, label: s }));
+    const conditionFilterOptions = Object.values(AssetCondition).map(c => ({ value: c, label: c }));
 
     // Handlers
     
@@ -880,14 +930,91 @@ const ItemRegistration: React.FC<ItemRegistrationProps> = (props) => {
                 </div>
             </div>
 
-            <div className="p-4 mb-4 bg-white border border-gray-200/80 rounded-xl shadow-md">
+            <div className="p-4 mb-4 bg-white border border-gray-200/80 rounded-xl shadow-md space-y-4">
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="relative flex-grow">
                         <SearchIcon className="absolute w-5 h-5 text-gray-400 transform -translate-y-1/2 top-1/2 left-3" />
                         <input type="text" placeholder="Cari aset..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-10 py-2 pl-10 pr-4 text-sm text-gray-900 bg-gray-50 border border-gray-300 rounded-lg focus:ring-tm-accent focus:border-tm-accent" />
                     </div>
-                    {/* Add Filters UI here if needed */}
+                    
+                    {/* Filter Button & Panel */}
+                    <div className="relative" ref={filterPanelRef}>
+                        <button
+                            onClick={() => { setTempFilters(filters); setIsFilterPanelOpen(p => !p); }}
+                            className={`inline-flex items-center justify-center gap-2 h-10 px-4 text-sm font-semibold transition-all duration-200 border rounded-lg shadow-sm sm:w-auto 
+                                ${activeFilterCount > 0 ? 'bg-tm-light border-tm-accent text-tm-primary' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}
+                            `}
+                        >
+                            <FilterIcon className="w-4 h-4" /> <span>Filter</span> {activeFilterCount > 0 && <span className="px-1.5 py-0.5 text-[10px] font-bold text-white rounded-full bg-tm-primary">{activeFilterCount}</span>}
+                        </button>
+                        {isFilterPanelOpen && (
+                            <>
+                                <div onClick={() => setIsFilterPanelOpen(false)} className="fixed inset-0 z-20 bg-black/25 sm:hidden" />
+                                <div className="fixed top-32 inset-x-4 z-30 origin-top rounded-xl border border-gray-200 bg-white shadow-lg sm:absolute sm:top-full sm:inset-x-auto sm:right-0 sm:mt-2 sm:w-72">
+                                    <div className="flex items-center justify-between p-4 border-b">
+                                        <h3 className="text-lg font-semibold text-gray-800">Filter Aset</h3>
+                                        <button onClick={() => setIsFilterPanelOpen(false)} className="p-1 text-gray-400 rounded-full hover:bg-gray-100"><CloseIcon className="w-5 h-5"/></button>
+                                    </div>
+                                    <div className="p-4 space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Kategori</label>
+                                            <CustomSelect 
+                                                options={[{ value: '', label: 'Semua Kategori' }, ...categoryFilterOptions]} 
+                                                value={tempFilters.category} 
+                                                onChange={v => setTempFilters(f => ({ ...f, category: v }))} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+                                            <CustomSelect 
+                                                options={[{ value: '', label: 'Semua Status' }, ...statusFilterOptions]} 
+                                                value={tempFilters.status} 
+                                                onChange={v => setTempFilters(f => ({ ...f, status: v }))} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Kondisi</label>
+                                            <CustomSelect 
+                                                options={[{ value: '', label: 'Semua Kondisi' }, ...conditionFilterOptions]} 
+                                                value={tempFilters.condition} 
+                                                onChange={v => setTempFilters(f => ({ ...f, condition: v }))} 
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between p-4 bg-gray-50 border-t">
+                                        <button onClick={handleResetFilters} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Reset</button>
+                                        <button onClick={handleApplyFilters} className="px-4 py-2 text-sm font-semibold text-white bg-tm-primary rounded-lg shadow-sm hover:bg-tm-primary-hover">Terapkan</button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
+
+                {/* ACTIVE FILTER CHIPS */}
+                {activeFilterCount > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 animate-fade-in-up">
+                        {filters.category && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-full">
+                                Kategori: <span className="font-bold">{filters.category}</span>
+                                <button onClick={() => handleRemoveFilter('category')} className="p-0.5 ml-1 rounded-full hover:bg-blue-200 text-blue-500"><CloseIcon className="w-3 h-3" /></button>
+                            </span>
+                        )}
+                        {filters.status && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-100 rounded-full">
+                                Status: <span className="font-bold">{filters.status}</span>
+                                <button onClick={() => handleRemoveFilter('status')} className="p-0.5 ml-1 rounded-full hover:bg-purple-200 text-purple-500"><CloseIcon className="w-3 h-3" /></button>
+                            </span>
+                        )}
+                        {filters.condition && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-100 rounded-full">
+                                Kondisi: <span className="font-bold">{filters.condition}</span>
+                                <button onClick={() => handleRemoveFilter('condition')} className="p-0.5 ml-1 rounded-full hover:bg-orange-200 text-orange-500"><CloseIcon className="w-3 h-3" /></button>
+                            </span>
+                        )}
+                         <button onClick={handleResetFilters} className="text-xs text-gray-500 hover:text-red-600 hover:underline px-2 py-1">Hapus Semua</button>
+                    </div>
+                )}
             </div>
 
             <div className="overflow-hidden bg-white border border-gray-200/80 rounded-xl shadow-md">
