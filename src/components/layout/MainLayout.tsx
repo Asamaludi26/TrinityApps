@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Page, PreviewData } from '../../types';
 import { Sidebar } from './Sidebar';
@@ -9,6 +10,8 @@ import { UserCogIcon } from '../icons/UserCogIcon';
 import { LogoutIcon } from '../icons/LogoutIcon';
 import { CommandPalette } from '../ui/CommandPalette';
 import { GlobalScannerModal } from '../ui/GlobalScannerModal';
+import { TopLoadingBar } from '../ui/TopLoadingBar';
+import { ContentSkeleton } from '../ui/ContentSkeleton';
 import PreviewModal from '../../features/preview/PreviewModal';
 
 // Stores
@@ -24,7 +27,7 @@ interface MainLayoutProps {
   onShowPreview: (data: PreviewData) => void;
   // Scanner Actions
   onOpenScanner: () => void;
-  // Modal States (passed from App for now, but ideally managed globally)
+  // Modal States
   isGlobalScannerOpen: boolean;
   setIsGlobalScannerOpen: (open: boolean) => void;
   onScanSuccess: (data: any) => void;
@@ -40,6 +43,7 @@ interface MainLayoutProps {
     onMarkAsRepaired: () => void;
     onDecommission: () => void;
     onReceiveFromRepair: () => void;
+    onToggleVisibility?: () => void; // Fixed missing optional
     onAddProgressUpdate: () => void;
     onEditItem: (data: any) => void;
   }
@@ -71,6 +75,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
 }) => {
   // UI Store
   const activePage = useUIStore((state) => state.activePage);
+  const isPageLoading = useUIStore((state) => state.isPageLoading);
   const sidebarOpen = useUIStore((state) => state.sidebarOpen);
   const setSidebarOpen = useUIStore((state) => state.toggleSidebar);
 
@@ -104,6 +109,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
 
   return (
     <div className="min-h-screen bg-tm-light flex">
+      {/* Top Progress Bar */}
+      <TopLoadingBar isLoading={isPageLoading} />
+
       {/* Sidebar */}
       <Sidebar
         currentUser={currentUser}
@@ -122,11 +130,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             <button onClick={() => setSidebarOpen(true)} className="text-gray-500 md:hidden p-2 hover:bg-gray-100 rounded-lg">
               <MenuIcon className="w-6 h-6" />
             </button>
-            {/* Bisa tambah Breadcrumb disini nanti */}
           </div>
 
           <div className="flex items-center space-x-3 sm:space-x-4">
-             {/* Search Trigger for Command Palette (Visual hint) */}
             <button 
                 onClick={() => setIsCommandPaletteOpen(true)}
                 className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 bg-gray-100 rounded-lg hover:text-gray-600 hover:bg-gray-200 transition-colors"
@@ -188,12 +194,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
 
         {/* Main Content Scroll Area */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-tm-light relative">
-            {children}
+            {isPageLoading ? <ContentSkeleton /> : children}
         </main>
       </div>
 
-      {/* --- Global Modals (Registered at Layout Level) --- */}
-      
+      {/* Global Modals */}
       <GlobalScannerModal
         isOpen={isGlobalScannerOpen}
         onClose={() => setIsGlobalScannerOpen(false)}
@@ -206,7 +211,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         onClose={() => setPreviewData(null)}
         onShowPreview={onShowPreview}
         onEditItem={previewActions.onEditItem}
-        // Pass through all action handlers
         onInitiateHandover={previewActions.onInitiateHandover}
         onInitiateDismantle={previewActions.onInitiateDismantle}
         onInitiateInstallation={previewActions.onInitiateInstallation}

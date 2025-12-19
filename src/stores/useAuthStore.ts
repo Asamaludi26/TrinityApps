@@ -1,8 +1,8 @@
-
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { User } from '../types';
 import * as api from '../services/api';
+import { useUIStore } from './useUIStore';
 
 interface AuthState {
   currentUser: User | null;
@@ -38,6 +38,9 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         set({ currentUser: null });
         localStorage.removeItem('currentUser'); // Cleanup legacy
+        
+        // Reset UI state on logout to prevent session bleed
+        useUIStore.getState().resetUIState();
       },
 
       updateCurrentUser: (user) => {

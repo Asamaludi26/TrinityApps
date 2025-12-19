@@ -25,39 +25,45 @@ const RequestHubPage: React.FC<RequestHubPageProps> = (props) => {
 
     switch (activePage) {
         case 'request':
-            return <NewRequestPage 
-                currentUser={props.currentUser}
-                onInitiateRegistration={props.onInitiateRegistration}
-                onInitiateHandoverFromRequest={props.onInitiateHandoverFromRequest}
-                initialFilters={props.initialFilters}
-                onClearInitialFilters={props.onClearInitialFilters}
-                onShowPreview={props.onShowPreview}
-                setActivePage={props.setActivePage}
-                markNotificationsAsRead={() => {}} // Deprecated prop, handled by store/bell
-            />;
+            return (
+                <NewRequestPage
+                    currentUser={props.currentUser}
+                    onInitiateRegistration={props.onInitiateRegistration}
+                    onInitiateHandoverFromRequest={props.onInitiateHandoverFromRequest}
+                    initialFilters={props.initialFilters}
+                    onClearInitialFilters={props.onClearInitialFilters}
+                    onShowPreview={props.onShowPreview}
+                    setActivePage={props.setActivePage}
+                    /* FIX: Removed markNotificationsAsRead prop as it is not present in NewRequestPageProps */
+                />
+            );
         case 'request-pinjam':
-            return <LoanRequestPage 
-                currentUser={props.currentUser}
-                setActivePage={props.setActivePage}
-                onShowPreview={props.onShowPreview}
-                onInitiateHandoverFromLoan={props.onInitiateHandoverFromLoan}
-                initialFilters={props.initialFilters}
-                setIsGlobalScannerOpen={props.setIsGlobalScannerOpen}
-                setScanContext={props.setScanContext}
-                setFormScanCallback={props.setFormScanCallback}
-                assetCategories={[]} // Store handles this now
-            />;
+            return (
+                <LoanRequestPage
+                    currentUser={props.currentUser}
+                    setActivePage={props.setActivePage}
+                    onShowPreview={props.onShowPreview}
+                    onInitiateHandoverFromLoan={props.onInitiateHandoverFromLoan}
+                    initialFilters={props.initialFilters}
+                    setIsGlobalScannerOpen={props.setIsGlobalScannerOpen}
+                    setScanContext={props.setScanContext}
+                    setFormScanCallback={props.setFormScanCallback}
+                    assetCategories={[]} // Store handles this now
+                />
+            );
         default:
-            return <NewRequestPage 
-                 currentUser={props.currentUser}
-                onInitiateRegistration={props.onInitiateRegistration}
-                onInitiateHandoverFromRequest={props.onInitiateHandoverFromRequest}
-                initialFilters={props.initialFilters}
-                onClearInitialFilters={props.onClearInitialFilters}
-                onShowPreview={props.onShowPreview}
-                setActivePage={props.setActivePage}
-                markNotificationsAsRead={() => {}}
-            />;
+            return (
+                <NewRequestPage
+                    currentUser={props.currentUser}
+                    onInitiateRegistration={props.onInitiateRegistration}
+                    onInitiateHandoverFromRequest={props.onInitiateHandoverFromRequest}
+                    initialFilters={props.initialFilters}
+                    onClearInitialFilters={props.onClearInitialFilters}
+                    onShowPreview={props.onShowPreview}
+                    setActivePage={props.setActivePage}
+                    /* FIX: Removed markNotificationsAsRead prop as it is not present in NewRequestPageProps */
+                />
+            );
     }
 };
 

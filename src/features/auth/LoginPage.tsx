@@ -7,6 +7,7 @@ import Modal from '../../components/ui/Modal';
 import { UsersIcon } from '../../components/icons/UsersIcon';
 import { DemoAccounts } from './components/DemoAccounts';
 import { useAuthStore } from '../../stores/useAuthStore';
+import { useUIStore } from '../../stores/useUIStore';
 
 interface LoginPageProps {
     onLogin: (email: string, pass: string) => Promise<User>;
@@ -14,6 +15,8 @@ interface LoginPageProps {
 
 const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     const loginStore = useAuthStore((state) => state.login);
+    const setActivePage = useUIStore((state) => state.setActivePage);
+    
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [rememberMe, setRememberMe] = useState(false);
@@ -52,10 +55,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
         try {
             // 1. Call Store Action (Primary Logic)
-            const user = await loginStore(email, password);
+            await loginStore(email, password);
             
-            // 2. Call Prop Action (Legacy Sync for App.tsx)
-            // This ensures App.tsx's local 'currentUser' state updates, triggering a re-render of the main layout.
+            // 2. Ensure navigation starts at dashboard
+            setActivePage('dashboard');
+            
+            // 3. Call Prop Action (Legacy Sync for App.tsx)
             if (onLogin) {
                 await onLogin(email, password); 
             }

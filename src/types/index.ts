@@ -324,8 +324,14 @@ export interface Request {
         feedbackSent?: boolean;
     };
 
+    // ITEM LEVEL STATUSES (UPDATED for Mixed Fulfillment)
     itemStatuses?: Record<number, {
-        status: 'approved' | 'rejected' | 'partial';
+        // 'stock_allocated': Tersedia di gudang, langsung ke handover
+        // 'procurement_needed': Tidak cukup, harus dibeli
+        // 'approved': Disetujui (standard)
+        // 'rejected': Ditolak
+        // 'partial': Disetujui sebagian
+        status: 'approved' | 'rejected' | 'partial' | 'stock_allocated' | 'procurement_needed';
         reason?: string;
         approvedQuantity: number;
     }>;

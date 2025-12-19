@@ -1,8 +1,4 @@
 
-
-
-
-
 import React, { useState, useEffect, useMemo } from "react";
 import { User, Page, PreviewData, Asset, Request, LoanRequest, AssetReturn } from "./types";
 
@@ -11,6 +7,8 @@ import { NotificationProvider, useNotification } from "./providers/NotificationP
 
 // Layout
 import { MainLayout } from "./components/layout/MainLayout";
+import { PageSkeleton } from "./components/ui/PageSkeleton";
+import { FullPageLoader } from "./components/ui/FullPageLoader";
 
 // Feature Components
 import LoginPage from "./features/auth/LoginPage";
@@ -43,7 +41,8 @@ import { useNotificationStore } from "./stores/useNotificationStore";
 const AppContent: React.FC = () => {
   // --- UI State from Store ---
   const activePage = useUIStore((state) => state.activePage);
-  const setActivePage = useUIStore((state) => state.setActivePage);
+  const setStoreActivePage = useUIStore((state) => state.setActivePage);
+  const setPageLoading = useUIStore((state) => state.setPageLoading);
   const pageInitialState = useUIStore((state) => state.pageInitialState);
   const clearPageInitialState = useUIStore((state) => state.clearPageInitialState);
 
@@ -52,25 +51,41 @@ const AppContent: React.FC = () => {
   const logout = useAuthStore((state) => state.logout);
 
   // --- Data Stores Initialization ---
-  // This effect remains here to ensure all data is loaded into the stores
-  // when the application first mounts. The component itself does not hold the data state.
+  const [isDataLoading, setIsDataLoading] = useState(true);
+
   useEffect(() => {
-    useAssetStore.getState().fetchAssets();
-    useRequestStore.getState().fetchRequests();
-    useTransactionStore.getState().fetchTransactions();
-    useMasterDataStore.getState().fetchMasterData();
-    useNotificationStore.getState().fetchNotifications();
+    const loadAllData = async () => {
+      await Promise.all([
+        useAssetStore.getState().fetchAssets(),
+        useRequestStore.getState().fetchRequests(),
+        useTransactionStore.getState().fetchTransactions(),
+        useMasterDataStore.getState().fetchMasterData(),
+        useNotificationStore.getState().fetchNotifications(),
+        new Promise(resolve => setTimeout(resolve, 800)) 
+      ]);
+      setIsDataLoading(false);
+    };
+
+    loadAllData();
   }, []);
+
+  // --- Transition Wrapper ---
+  const setActivePage = (page: Page, initialState?: any) => {
+    setPageLoading(true);
+    // Simulasi delay request server saat berpindah halaman
+    setTimeout(() => {
+        setStoreActivePage(page, initialState);
+        setPageLoading(false);
+    }, 600); 
+  };
 
   // --- Global Modal States ---
   const [isGlobalScannerOpen, setIsGlobalScannerOpen] = useState(false);
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   
-  // Scanner callback helpers
   const [scanContext, setScanContext] = useState<'global' | 'form'>('global');
   const [formScanCallback, setFormScanCallback] = useState<((data: any) => void) | null>(null);
 
-  // --- Global Actions/Helpers ---
   const addNotification = useNotification();
 
   const handleShowPreview = (data: PreviewData) => {
@@ -97,7 +112,6 @@ const AppContent: React.FC = () => {
     setIsGlobalScannerOpen(false);
   };
 
-  // --- Navigation Actions (Memoized if needed, but functions are stable enough here) ---
   const navigationActions = {
       onInitiateHandover: (asset: Asset) => { setActivePage('handover', { prefillData: asset }); setPreviewData(null); },
       onInitiateDismantle: (asset: Asset) => { setActivePage('customer-dismantle', { prefillData: asset }); setPreviewData(null); },
@@ -105,7 +119,7 @@ const AppContent: React.FC = () => {
       onInitiateRegistrationFromRequest: (request: Request, itemToRegister: any) => { setActivePage('registration', { prefillData: { request, itemToRegister } }); },
       onInitiateHandoverFromRequest: (request: Request) => { setActivePage('handover', { prefillData: request }); },
       onInitiateHandoverFromLoan: (loanRequest: LoanRequest) => { setActivePage('handover', { prefillData: loanRequest }); },
-      onReportDamage: () => { setActivePage('stock'); }, // Usually opens modal, logic in StockPage or Preview
+      onReportDamage: () => { setActivePage('stock'); },
       onStartRepair: () => setActivePage('repair'),
       onMarkAsRepaired: () => setActivePage('repair'),
       onDecommission: () => setActivePage('repair'),
@@ -114,12 +128,20 @@ const AppContent: React.FC = () => {
       onEditItem: (data: PreviewData) => {
           setPreviewData(null);
           if (data.type === 'asset') {
-             // The RegistrationPage will fetch the asset itself using the ID
              setActivePage('registration', { itemToEdit: { type: 'asset', id: data.id } }); 
           }
           if (data.type === 'customer') setActivePage('customer-edit', { customerId: data.id });
       }
   };
+
+  if (isDataLoading) {
+    return (
+        <>
+            <FullPageLoader message="Sinkronisasi Database..." />
+            <PageSkeleton />
+        </>
+    );
+  }
 
   const staffRestrictedPages: Page[] = [
     "registration", "repair", "customers", "customer-new", "customer-edit",
@@ -258,7 +280,6 @@ const AppContent: React.FC = () => {
             }
             currentUser={currentUser}
             setActivePage={setActivePage}
-// FIX: The name 'onShowPreview' was not found. The correct variable name is 'handleShowPreview' which is defined in the component's scope.
             onShowPreview={handleShowPreview}
             pageInitialState={pageInitialState}
             prefillData={pageInitialState?.prefillData}
@@ -359,14 +380,25 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   const currentUser = useAuthStore((state) => state.currentUser);
   const checkSession = useAuthStore((state) => state.checkSession);
+  const [isHydrated, setIsHydrated] = useState(false);
   
   useEffect(() => {
+      const checkHydration = setInterval(() => {
+        if (useAuthStore.persist.hasHydrated() && useUIStore.persist.hasHydrated()) {
+          setIsHydrated(true);
+          clearInterval(checkHydration);
+        }
+      }, 50);
+
       checkSession();
+      return () => clearInterval(checkHydration);
   }, [checkSession]);
 
+  if (!isHydrated) {
+    return <FullPageLoader message="Memulai Sistem..." />;
+  }
+
   if (!currentUser) {
-    // The onLogin prop here is now mostly for legacy compatibility.
-    // The primary login logic resides in the useAuthStore.
     return <LoginPage onLogin={async () => ({} as any)} />;
   }
 

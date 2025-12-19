@@ -309,6 +309,12 @@ const HandoverForm: React.FC<{
                     }
                     setWoRoIntNumber(request.id);
                     
+                    // --- SAFETY UPDATE: Filter out REJECTED items ---
+                    const validItems = request.items.filter(item => {
+                         const status = request.itemStatuses?.[item.id];
+                         return status?.status !== 'rejected';
+                    });
+                    
                     const registeredAssets = assets.filter(asset => 
                         asset.woRoIntNumber === request.id && asset.status === AssetStatus.IN_STORAGE
                     );
@@ -324,16 +330,20 @@ const HandoverForm: React.FC<{
                             checked: true
                         })));
                     } else {
-                            setItems(request.items.map(item => ({
-                            id: Date.now() + Math.random(),
-                            assetId: '', 
-                            itemName: item.itemName,
-                            itemTypeBrand: item.itemTypeBrand,
-                            conditionNotes: 'Kondisi baik (dari stok)',
-                            quantity: item.quantity,
-                            checked: true
-                        })));
-                            addNotification('Aset yang baru dicatat tidak ditemukan di gudang. Harap pilih secara manual.', 'warning');
+                        // Use only valid items for manual mapping
+                        setItems(validItems.map(item => {
+                            const approvedQty = request.itemStatuses?.[item.id]?.approvedQuantity ?? item.quantity;
+                            return {
+                                id: Date.now() + Math.random(),
+                                assetId: '', 
+                                itemName: item.itemName,
+                                itemTypeBrand: item.itemTypeBrand,
+                                conditionNotes: 'Kondisi baik (dari stok)',
+                                quantity: approvedQty,
+                                checked: true
+                            };
+                        }));
+                        addNotification('Aset yang baru dicatat tidak ditemukan di gudang. Harap pilih secara manual.', 'warning');
                     }
                 } else { // LoanRequest
                     const loanRequest = prefillData as LoanRequest;
@@ -441,7 +451,7 @@ const HandoverForm: React.FC<{
                             <InfoIcon className="flex-shrink-0 w-5 h-5 mt-0.5 text-tm-primary" />
                             <p className="text-sm text-blue-800">
                                 <strong>Info:</strong> Penerima, divisi, dan detail barang telah diatur secara otomatis berdasarkan data dari request aset asli
-                                (<span className="font-mono">{woRoIntNumber}</span>).
+                                (<span className="font-mono">{woRoIntNumber}</span>). Item yang ditolak telah difilter.
                             </p>
                         </div>
                     </div>

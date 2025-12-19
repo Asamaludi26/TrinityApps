@@ -1,9 +1,10 @@
 
 import { create } from 'zustand';
-import { Request, LoanRequest, AssetReturn, ItemStatus, LoanRequestStatus, AssetReturnStatus, RequestItem, LoanItem, Activity } from '../types';
+import { Request, LoanRequest, AssetReturn, ItemStatus, LoanRequestStatus, AssetReturnStatus, RequestItem, LoanItem, Activity, AssetStatus } from '../types';
 import * as api from '../services/api';
 import { useNotificationStore } from './useNotificationStore';
 import { useMasterDataStore } from './useMasterDataStore';
+import { useAssetStore } from './useAssetStore'; // Import Asset Store
 import { generateDocumentNumber } from '../utils/documentNumberGenerator';
 
 interface RequestState {
@@ -20,7 +21,7 @@ interface RequestState {
   updateRequest: (id: string, data: Partial<Request>) => Promise<void>;
   deleteRequest: (id: string) => Promise<void>;
   
-  // Logic: Registrasi Parsial (memindahkan logika handleCompleteRequestRegistration dari App.tsx)
+  // Logic: Registrasi Parsial
   updateRequestRegistration: (requestId: string, itemId: number, count: number) => Promise<boolean>;
 
   // Actions - Loan Requests
@@ -60,18 +61,77 @@ export const useRequestStore = create<RequestState>((set, get) => ({
     const current = get().requests;
     const newId = `REQ-${String(current.length + 1).padStart(3, '0')}`;
     const requestDate = new Date(requestData.requestDate);
-    // FIX: The `generateDocumentNumber` function now correctly accepts `Request[]` as its second argument.
     const docNumber = generateDocumentNumber('REQ', current, requestDate);
     
-    const newRequest: Request = {
-        ...requestData,
-        id: newId,
-        docNumber: docNumber,
-        status: ItemStatus.PENDING,
+    // --- OPTIMIZED LOGIC: O(N) Frequency Map for Stock Check ---
+    // Mencegah iterasi berulang pada array assets yang besar di dalam loop items.
+    const allAssets = useAssetStore.getState().assets;
+    
+    // 1. Build Inventory Map: "Name|Brand" -> Available Count
+    const inventoryMap = new Map<string, number>();
+    
+    // Hanya loop satu kali pada array assets (Performance safe untuk 10k+ data)
+    for (const asset of allAssets) {
+        if (asset.status === AssetStatus.IN_STORAGE) {
+            const key = `${asset.name.trim()}|${asset.brand.trim()}`.toLowerCase();
+            inventoryMap.set(key, (inventoryMap.get(key) || 0) + 1);
+        }
+    }
+
+    const itemStatuses: Record<number, { status: 'stock_allocated' | 'procurement_needed' | 'approved' | 'rejected' | 'partial'; approvedQuantity: number; reason?: string }> = {};
+    let needsProcurement = false;
+
+    // 2. Check Requests against Map (O(1) lookup)
+    requestData.items.forEach(item => {
+        const key = `${item.itemName.trim()}|${item.itemTypeBrand.trim()}`.toLowerCase();
+        const availableStock = inventoryMap.get(key) || 0;
+
+        // Logic Simulasi Reservasi:
+        // Di sistem real (backend), kita harus melakukan "Soft Lock" atau mengurangi inventoryMap sementara
+        // agar jika ada item duplikat di request yang sama, stok tidak dihitung ganda.
+        const requestedQty = item.quantity;
+        
+        if (availableStock >= requestedQty) {
+            // Update map sementara untuk item berikutnya dalam request yang sama
+            inventoryMap.set(key, availableStock - requestedQty); 
+            
+            itemStatuses[item.id] = {
+                status: 'stock_allocated',
+                approvedQuantity: item.quantity,
+                reason: 'Stok tersedia di gudang (Auto-Allocated)'
+            };
+        } else {
+            itemStatuses[item.id] = {
+                status: 'procurement_needed',
+                approvedQuantity: item.quantity,
+                reason: 'Stok tidak mencukupi, masuk antrian pengadaan'
+            };
+            needsProcurement = true;
+        }
+    });
+
+    const initialStatus = !needsProcurement ? ItemStatus.AWAITING_HANDOVER : ItemStatus.PENDING;
+
+    // Auto-approve metadata
+    const autoApprovalData = !needsProcurement ? {
+        logisticApprover: 'System (Auto-Stock)',
+        logisticApprovalDate: new Date().toISOString(),
+        finalApprover: 'System (Auto-Stock)',
+        finalApprovalDate: new Date().toISOString(),
+    } : {
         logisticApprover: null,
         logisticApprovalDate: null,
         finalApprover: null,
         finalApprovalDate: null,
+    };
+
+    const newRequest: Request = {
+        ...requestData,
+        id: newId,
+        docNumber: docNumber,
+        status: initialStatus,
+        itemStatuses: itemStatuses,
+        ...autoApprovalData,
         rejectionReason: null,
         rejectedBy: null,
         rejectionDate: null,
@@ -81,6 +141,23 @@ export const useRequestStore = create<RequestState>((set, get) => ({
     const updated = [newRequest, ...current];
     await api.updateData('app_requests', updated);
     set({ requests: updated });
+
+    // --- NOTIFICATION ---
+    const addSystemNotification = useNotificationStore.getState().addSystemNotification;
+    const users = useMasterDataStore.getState().users;
+    
+    const logisticAdmins = users.filter(u => u.role === 'Admin Logistik');
+    logisticAdmins.forEach(admin => {
+        addSystemNotification({
+            recipientId: admin.id,
+            actorName: requestData.requester,
+            type: 'REQUEST_CREATED',
+            referenceId: newId,
+            message: !needsProcurement 
+                ? `membuat request #${newId} (Full Stok - Siap Handover).` 
+                : `membuat request #${newId} (Perlu Pengadaan).`
+        });
+    });
   },
 
   updateRequest: async (id, data) => {
@@ -95,7 +172,6 @@ export const useRequestStore = create<RequestState>((set, get) => ({
         const addSystemNotification = useNotificationStore.getState().addSystemNotification;
         const users = useMasterDataStore.getState().users;
         
-        // --- 1. Notify the original requester about their request status change ---
         const recipient = users.find(u => u.name === originalRequest.requester);
         if (recipient) {
             const isApproval = [ItemStatus.LOGISTIC_APPROVED, ItemStatus.APPROVED, ItemStatus.AWAITING_CEO_APPROVAL].includes(data.status);
@@ -113,7 +189,6 @@ export const useRequestStore = create<RequestState>((set, get) => ({
             }
         }
         
-        // --- 2. Notify Admin Purchase when a request is approved by Logistics ---
         if (data.status === ItemStatus.LOGISTIC_APPROVED) {
             const purchaseAdmins = users.filter(u => u.role === 'Admin Purchase');
             const logisticApprover = data.logisticApprover || 'Admin Logistik';
@@ -124,12 +199,11 @@ export const useRequestStore = create<RequestState>((set, get) => ({
                     actorName: logisticApprover,
                     type: 'REQUEST_LOGISTIC_APPROVED',
                     referenceId: id,
-                    message: `telah menyetujui request #${id} yang kini memerlukan proses pembelian.`
+                    message: `telah menyetujui request #${id}. Item yang stoknya kurang perlu diproses pembelian.`
                 });
             });
         }
     }
-    // --- END NOTIFICATION LOGIC ---
   },
 
   deleteRequest: async (id) => {
@@ -140,7 +214,6 @@ export const useRequestStore = create<RequestState>((set, get) => ({
   },
 
   updateRequestRegistration: async (requestId, itemId, count) => {
-    // Logic dipindahkan dari App.tsx: handleCompleteRequestRegistration
     const currentRequests = get().requests;
     const requestIndex = currentRequests.findIndex(r => r.id === requestId);
     if (requestIndex === -1) return false;
@@ -159,7 +232,13 @@ export const useRequestStore = create<RequestState>((set, get) => ({
 
     // Cek apakah semua item sudah terdaftar penuh
     const allItemsRegistered = updatedRequest.items.every((item) => {
-      const approvedQuantity = updatedRequest.itemStatuses?.[item.id]?.approvedQuantity ?? item.quantity;
+      const status = updatedRequest.itemStatuses?.[item.id];
+      
+      // Critical Check: Stock allocated items are considered "registered" instantly
+      if (status?.status === 'stock_allocated') return true;
+      if (status?.status === 'rejected') return true;
+
+      const approvedQuantity = status?.approvedQuantity ?? item.quantity;
       const registeredCount = updatedRequest.partiallyRegisteredItems?.[item.id] || 0;
       return registeredCount >= approvedQuantity;
     });
@@ -192,7 +271,6 @@ export const useRequestStore = create<RequestState>((set, get) => ({
     await api.updateData('app_loanRequests', updated);
     set({ loanRequests: updated });
 
-    // --- NOTIFICATION LOGIC ---
     if (originalRequest && data.status && data.status !== originalRequest.status) {
         const addSystemNotification = useNotificationStore.getState().addSystemNotification;
         const users = useMasterDataStore.getState().users;
@@ -211,7 +289,6 @@ export const useRequestStore = create<RequestState>((set, get) => ({
             });
         }
     }
-    // --- END NOTIFICATION LOGIC ---
   },
   
   deleteLoanRequest: async (id) => {
