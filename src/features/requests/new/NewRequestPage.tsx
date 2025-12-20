@@ -31,6 +31,7 @@ import { useUIStore } from "../../../stores/useUIStore";
 import { exportToCSV } from "../../../utils/csvExporter";
 import { BsJournalBookmark, BsArrowRight } from "react-icons/bs";
 import { ChevronLeftIcon } from "../../../components/icons/ChevronLeftIcon";
+import { ArchiveBoxIcon } from "../../../components/icons/ArchiveBoxIcon"; // Import ArchiveBoxIcon
 
 interface NewRequestPageProps {
   currentUser: User;
@@ -67,6 +68,9 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
   const [isBulkApproveModalOpen, setIsBulkApproveModalOpen] = useState(false);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [hasExistingDraft, setHasExistingDraft] = useState<string | null>(null);
+  
+  // Staging / Receipt Modal State
+  const [stagingRequest, setStagingRequest] = useState<Request | null>(null);
   
   const [searchQuery, setSearchQuery] = useState("");
   // Updated filters state to include dates
@@ -303,20 +307,53 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
     }
   };
   
-  const handleOpenStaging = (request: Request) => {
-      const itemToRegister = request.items.find(i => {
-          const status = request.itemStatuses?.[i.id];
-          if (status?.status === 'stock_allocated' || status?.status === 'rejected') return false;
-          const approvedQty = status?.approvedQuantity ?? i.quantity;
-          const registeredQty = request.partiallyRegisteredItems?.[i.id] || 0;
-          return registeredQty < approvedQty;
-      });
+  // Logic: Items ready for staging in List View
+  const stagingItems = useMemo(() => {
+    if (!stagingRequest) return [];
+    return stagingRequest.items.filter(item => {
+      const status = stagingRequest.itemStatuses?.[item.id];
+      if (status?.status === 'rejected') return false;
+      const approvedQty = status?.approvedQuantity ?? item.quantity;
+      return approvedQty > 0;
+    });
+  }, [stagingRequest]);
 
-      if (itemToRegister) {
-          onInitiateRegistration(request, itemToRegister);
-      } else {
-          addNotificationUI('Semua item dalam request ini sudah dicatat atau dialokasikan dari stok.', 'info');
-      }
+  const handleOpenStaging = (request: Request) => {
+    // Check if there are items to register
+    const hasItems = request.items.some(i => {
+        const status = request.itemStatuses?.[i.id];
+        if (status?.status === 'stock_allocated' || status?.status === 'rejected') return false;
+        const approvedQty = status?.approvedQuantity ?? i.quantity;
+        const registeredQty = request.partiallyRegisteredItems?.[i.id] || 0;
+        return registeredQty < approvedQty;
+    });
+
+    if (hasItems) {
+        setStagingRequest(request);
+    } else {
+        addNotificationUI('Semua item dalam request ini sudah dicatat atau dialokasikan dari stok.', 'info');
+    }
+  };
+
+  const handleProceedToRegistration = () => {
+    if (!stagingRequest) return;
+    
+    // Find the first eligible item to register
+    const itemToRegister = stagingRequest.items.find(i => {
+        const status = stagingRequest.itemStatuses?.[i.id];
+        if (status?.status === 'stock_allocated' || status?.status === 'rejected') return false;
+        const approvedQty = status?.approvedQuantity ?? i.quantity;
+        const registeredQty = stagingRequest.partiallyRegisteredItems?.[i.id] || 0;
+        return registeredQty < approvedQty;
+    });
+
+    if (itemToRegister) {
+        setStagingRequest(null);
+        onInitiateRegistration(stagingRequest, itemToRegister);
+    } else {
+        setStagingRequest(null);
+        addNotificationUI('Tidak ada item yang perlu dicatat.', 'info');
+    }
   };
 
   // Rendering
@@ -370,8 +407,25 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
              const today = new Date().toISOString();
              const purchaseDetails: any = {};
              Object.entries(data).forEach(([k, v]) => purchaseDetails[Number(k)] = { ...v, filledBy: currentUser.name, fillDate: today });
-             await updateRequest(id, { status: ItemStatus.AWAITING_CEO_APPROVAL, purchaseDetails });
+             
+             // Create activity log for transparency
+             const submitActivity: Activity = {
+                id: Date.now(),
+                author: currentUser.name,
+                timestamp: today,
+                type: 'status_change',
+                payload: { text: 'Mengajukan detail pembelian untuk persetujuan CEO.' }
+             };
+             
+             const updatedActivityLog = [submitActivity, ...(selectedRequest.activityLog || [])];
+             
+             await updateRequest(id, { 
+                 status: ItemStatus.AWAITING_CEO_APPROVAL, 
+                 purchaseDetails,
+                 activityLog: updatedActivityLog
+             });
              setView("list");
+             addNotificationUI('Request berhasil diajukan ke CEO.', 'success');
           }}
           onFinalCeoApproval={(id) => updateRequest(id, { status: ItemStatus.APPROVED, finalApprover: currentUser.name, finalApprovalDate: new Date().toISOString() })}
           onStartProcurement={() => updateRequest(selectedRequest.id, { status: ItemStatus.PURCHASING })}
@@ -448,7 +502,7 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
           )}
 
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto custom-scrollbar">
               <RequestTable 
                 requests={paginatedRequests}
                 currentUser={currentUser}
@@ -512,6 +566,67 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
            </div>
         </Modal>
       )}
+
+      {/* STAGING / RECEIPT CONFIRMATION MODAL */}
+      <Modal 
+        isOpen={!!stagingRequest} 
+        onClose={() => setStagingRequest(null)} 
+        title="Penerimaan Barang" 
+        size="lg" 
+        hideDefaultCloseButton 
+        footerContent={
+            <div className="flex justify-end gap-3 w-full">
+                 <button onClick={() => setStagingRequest(null)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Batal</button>
+                 <button onClick={handleProceedToRegistration} disabled={stagingItems.length === 0} className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-tm-primary rounded-lg shadow-sm hover:bg-tm-primary-hover disabled:bg-gray-300 disabled:cursor-not-allowed">Lanjut Catat Aset</button>
+            </div>
+        }
+      >
+        <div className="space-y-4">
+             <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
+                <ArchiveBoxIcon className="w-6 h-6 text-tm-primary flex-shrink-0 mt-0.5" />
+                <div>
+                    <h4 className="font-bold text-tm-primary text-sm">Konfirmasi Penerimaan</h4>
+                    <p className="text-sm text-blue-800 mt-1">
+                        Berikut adalah daftar item dari request <strong>{stagingRequest?.id}</strong> yang telah disetujui dan siap untuk dicatat ke dalam sistem inventori. Pastikan fisik barang telah diterima.
+                    </p>
+                </div>
+            </div>
+
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                        <tr>
+                            <th className="p-3 w-10 text-center">No</th>
+                            <th className="p-3">Nama Barang</th>
+                            <th className="p-3">Tipe/Brand</th>
+                            <th className="p-3 text-center">Jumlah Diterima</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {stagingItems.length > 0 ? stagingItems.map((item, idx) => {
+                            const approvedQty = stagingRequest?.itemStatuses?.[item.id]?.approvedQuantity ?? item.quantity;
+                            return (
+                                <tr key={item.id} className="hover:bg-slate-50">
+                                    <td className="p-3 text-center text-slate-500">{idx + 1}</td>
+                                    <td className="p-3 font-semibold text-slate-800">{item.itemName}</td>
+                                    <td className="p-3 text-slate-600">{item.itemTypeBrand}</td>
+                                    <td className="p-3 text-center font-bold text-tm-primary bg-blue-50/50">{approvedQty} Unit</td>
+                                </tr>
+                            );
+                        }) : (
+                            <tr>
+                                 <td colSpan={4} className="p-6 text-center text-slate-500 italic">Tidak ada item yang dapat dicatat (Semua item ditolak atau belum disetujui).</td>
+                             </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+            
+            <p className="text-xs text-slate-500 text-center italic mt-2">
+                Klik "Lanjut Catat Aset" untuk mulai memasukkan Nomor Seri dan data detail lainnya.
+            </p>
+        </div>
+      </Modal>
     </div>
   );
 };

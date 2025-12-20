@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Request, User, Notification, ItemStatus } from '../../../../types';
 import { useLongPress } from '../../../../hooks/useLongPress';
@@ -15,6 +16,7 @@ import { SortIcon } from '../../../../components/icons/SortIcon';
 import { SortAscIcon } from '../../../../components/icons/SortAscIcon';
 import { SortDescIcon } from '../../../../components/icons/SortDescIcon';
 import { RequestStatusIndicator, OrderIndicator } from './RequestStatus';
+import { BsCalendarEvent, BsThreeDotsVertical } from 'react-icons/bs';
 
 const SortableHeaderComp: React.FC<{
   children: React.ReactNode;
@@ -25,17 +27,16 @@ const SortableHeaderComp: React.FC<{
 }> = ({ children, columnKey, sortConfig, requestSort, className }) => {
   const isSorted = sortConfig?.key === columnKey;
   const direction = isSorted ? sortConfig.direction : undefined;
-  const getSortIcon = () => {
-    if (!isSorted) return <SortIcon className="w-4 h-4 text-gray-400" />;
-    if (direction === "ascending") return <SortAscIcon className="w-4 h-4 text-tm-accent" />;
-    return <SortDescIcon className="w-4 h-4 text-tm-accent" />;
-  };
+  
   return (
-    <th scope="col" className={`px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500 ${className}`}>
-      <button onClick={() => requestSort(columnKey)} className="flex items-center space-x-1 group">
+    <th scope="col" className={`px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 cursor-pointer group select-none transition-colors hover:text-slate-700 ${className}`} onClick={() => requestSort(columnKey)}>
+      <div className="flex items-center gap-2">
         <span>{children}</span>
-        <span className="opacity-50 group-hover:opacity-100">{getSortIcon()}</span>
-      </button>
+        <span className={`transition-opacity duration-200 ${isSorted ? 'opacity-100 text-tm-primary' : 'opacity-0 group-hover:opacity-50'}`}>
+           {direction === 'ascending' ? <SortAscIcon className="w-3.5 h-3.5" /> : <SortDescIcon className="w-3.5 h-3.5" />}
+        </span>
+        {!isSorted && <SortIcon className="w-3.5 h-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />}
+      </div>
     </th>
   );
 };
@@ -78,11 +79,11 @@ export const RequestTable: React.FC<RequestTableProps> = ({
   const longPressHandlers = useLongPress(onEnterBulkMode, 500);
 
   return (
-    <table className="min-w-full divide-y divide-gray-200">
-      <thead className="sticky top-0 z-10 bg-gray-50">
+    <table className="min-w-full divide-y divide-slate-100">
+      <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm border-b border-slate-200 shadow-sm">
         <tr>
           {isBulkSelectMode && (
-            <th scope="col" className="px-6 py-3">
+            <th scope="col" className="px-6 py-4 w-12">
               <Checkbox
                 checked={selectedRequestIds.length === requests.length && requests.length > 0}
                 onChange={onSelectAll}
@@ -90,22 +91,24 @@ export const RequestTable: React.FC<RequestTableProps> = ({
               />
             </th>
           )}
-          <SortableHeaderComp columnKey="id" sortConfig={sortConfig} requestSort={requestSort}>ID / Tanggal</SortableHeaderComp>
+          <SortableHeaderComp columnKey="id" sortConfig={sortConfig} requestSort={requestSort}>Info Request</SortableHeaderComp>
           <SortableHeaderComp columnKey="requester" sortConfig={sortConfig} requestSort={requestSort}>Pemohon</SortableHeaderComp>
-          <th scope="col" className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Detail Permintaan</th>
+          <th scope="col" className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Detail Barang</th>
           <SortableHeaderComp columnKey="status" sortConfig={sortConfig} requestSort={requestSort}>Status</SortableHeaderComp>
-          <th scope="col" className="relative px-6 py-3"><span className="sr-only">Aksi</span></th>
+          <th scope="col" className="px-6 py-4 w-24 text-right text-xs font-bold uppercase tracking-wider text-slate-500">Aksi</th>
         </tr>
       </thead>
-      <tbody className="bg-white divide-y divide-gray-200">
+      <tbody className="bg-white divide-y divide-slate-50">
         {requests.length > 0 ? (
           requests.map((req) => {
+            // Notification Logic
             const relevantNotifs = notifications.filter(n => n.recipientId === currentUser.id && n.referenceId === req.id);
             const hasUnreadNotif = relevantNotifs.some(n => !n.isRead);
             const isApprover = ["Admin Purchase", "Admin Logistik", "Super Admin"].includes(currentUser.role);
             const showHighlight = hasUnreadNotif && isApprover;
             const unreadNotifTypes = new Set(relevantNotifs.filter(n => !n.isRead).map(n => n.type));
 
+            // Follow Up Logic
             const now = new Date();
             const lastFollowUpDate = req.lastFollowUpAt ? new Date(req.lastFollowUpAt) : null;
             let isFollowUpDisabled = false;
@@ -115,9 +118,21 @@ export const RequestTable: React.FC<RequestTableProps> = ({
               const diffHours = (now.getTime() - lastFollowUpDate.getTime()) / (1000 * 60 * 60);
               if (diffHours < 24) {
                 isFollowUpDisabled = true;
-                followUpTooltip = `Anda dapat follow-up lagi dalam ${Math.ceil(24 - diffHours)} jam.`;
+                followUpTooltip = `Tunggu ${Math.ceil(24 - diffHours)} jam untuk follow-up lagi.`;
               }
             }
+
+            const isSelected = selectedRequestIds.includes(req.id);
+            const isHighlighted = req.id === highlightedId;
+            const rowBaseClass = "transition-all duration-200 cursor-pointer group relative border-l-4";
+            
+            // Dynamic Classes based on state (Accent Border Left)
+            let bgClass = "hover:bg-slate-50 bg-white border-l-transparent";
+            if (isSelected) bgClass = "bg-blue-50/60 border-l-tm-primary";
+            else if (isHighlighted) bgClass = "bg-amber-50 border-l-amber-400 animate-pulse-slow";
+            else if (showHighlight) bgClass = "bg-blue-50/30 border-l-blue-400";
+            else if (req.order.type === 'Urgent') bgClass = "hover:bg-red-50/20 border-l-transparent hover:border-l-red-400";
+            else bgClass = "hover:bg-slate-50 border-l-transparent hover:border-l-slate-300";
 
             return (
               <tr
@@ -125,89 +140,142 @@ export const RequestTable: React.FC<RequestTableProps> = ({
                 id={`request-row-${req.id}`}
                 {...longPressHandlers}
                 onClick={() => isBulkSelectMode ? onSelectOne(req.id) : onDetailClick(req)}
-                className={`transition-colors cursor-pointer 
-                  ${selectedRequestIds.includes(req.id) ? "bg-blue-50" : ""} 
-                  ${req.id === highlightedId ? "bg-amber-100 animate-pulse-slow" : showHighlight ? "bg-amber-100/50 animate-pulse-slow" : "hover:bg-gray-50"}`}
+                className={`${rowBaseClass} ${bgClass}`}
               >
                 {isBulkSelectMode && (
-                  <td className="px-6 py-4 align-top" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox checked={selectedRequestIds.includes(req.id)} onChange={() => onSelectOne(req.id)} />
+                  <td className="px-6 py-5 align-middle" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox checked={isSelected} onChange={() => onSelectOne(req.id)} />
                   </td>
                 )}
-                <td className="px-6 py-4 lg:whitespace-nowrap">
-                  <div className="flex flex-col gap-2">
-                    <div>
-                      <div className="text-sm font-semibold text-gray-900">{req.id}</div>
-                      <div className="text-xs text-gray-500">{new Date(req.requestDate).toLocaleString("id-ID")}</div>
+
+                {/* Column 1: ID & Date & Type */}
+                <td className="px-6 py-5 align-top">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                       <span className="text-sm font-bold text-slate-800 group-hover:text-tm-primary transition-colors font-mono">{req.id}</span>
+                       {showHighlight && <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>}
                     </div>
-                    <OrderIndicator order={req.order} />
+                    
+                    <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                        <BsCalendarEvent className="w-3 h-3 text-slate-400" />
+                        <span>{new Date(req.requestDate).toLocaleDateString("id-ID", { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                    </div>
+
+                    <div className="mt-1">
+                        <OrderIndicator order={req.order} />
+                    </div>
+
+                    {/* Notification Icons (Subtle) */}
                     {showHighlight && (
-                      <div className="flex items-center gap-1.5">
-                        {unreadNotifTypes.has("CEO_DISPOSITION") && <Tooltip text="Diprioritaskan oleh CEO"><MegaphoneIcon className="w-4 h-4 text-purple-600" /></Tooltip>}
-                        {unreadNotifTypes.has("PROGRESS_UPDATE_REQUEST") && <Tooltip text="CEO meminta update progres"><InfoIcon className="w-4 h-4 text-blue-600 animate-pulse" /></Tooltip>}
-                        {unreadNotifTypes.has("FOLLOW_UP") && <Tooltip text="Permintaan ini di-follow up"><BellIcon className="w-4 h-4 text-amber-50" /></Tooltip>}
+                      <div className="flex items-center gap-1.5 mt-1 animate-fade-in-up">
+                        {unreadNotifTypes.has("CEO_DISPOSITION") && <Tooltip text="Diprioritaskan oleh CEO"><MegaphoneIcon className="w-3.5 h-3.5 text-purple-600" /></Tooltip>}
+                        {unreadNotifTypes.has("PROGRESS_UPDATE_REQUEST") && <Tooltip text="CEO meminta update progres"><InfoIcon className="w-3.5 h-3.5 text-blue-600" /></Tooltip>}
+                        {unreadNotifTypes.has("FOLLOW_UP") && <Tooltip text="Permintaan ini di-follow up"><BellIcon className="w-3.5 h-3.5 text-amber-500" /></Tooltip>}
                       </div>
                     )}
                   </div>
                 </td>
-                <td className="px-6 py-4 lg:whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900">{req.requester}</div>
-                  <div className="text-xs text-gray-500">{req.division}</div>
+
+                {/* Column 2: Requester (Text Only) */}
+                <td className="px-6 py-5 align-middle">
+                    <div className="flex flex-col">
+                        <div className="text-sm font-bold text-slate-800">{req.requester}</div>
+                        <div className="text-xs font-medium text-slate-500">{req.division}</div>
+                    </div>
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  <div className="font-medium text-gray-800">{req.items.length} item</div>
-                  <div className="text-xs truncate text-gray-500 max-w-[200px]" title={req.items[0]?.itemName}>
-                    {req.items[0]?.itemName}{req.items.length > 1 ? ", ..." : ""}
-                  </div>
+
+                {/* Column 3: Items (Visual Badge Style) */}
+                <td className="px-6 py-5 align-middle">
+                    <div className="flex items-start gap-3">
+                        {/* Count Badge */}
+                        <div className="flex-shrink-0 bg-slate-100 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 shadow-sm flex flex-col items-center min-w-[3rem]">
+                             <span className="text-lg leading-none tracking-tight">{req.items.length}</span>
+                             <span className="text-[8px] uppercase tracking-wide opacity-70">Item</span>
+                        </div>
+                        
+                        {/* Item Details */}
+                        <div className="flex flex-col justify-center min-h-[3rem]">
+                            <div className="text-sm font-semibold text-slate-800 line-clamp-1" title={req.items[0]?.itemName}>
+                                {req.items[0]?.itemName}
+                            </div>
+                            {req.items.length > 1 ? (
+                                <span className="text-xs text-slate-500 font-medium">+ {req.items.length - 1} item lainnya</span>
+                            ) : (
+                                <span className="text-xs text-slate-400">{req.items[0]?.itemTypeBrand || 'Generic'}</span>
+                            )}
+                        </div>
+                    </div>
                 </td>
-                <td className="px-6 py-4 lg:whitespace-nowrap">
-                  <RequestStatusIndicator status={req.status} />
+
+                {/* Column 4: Status */}
+                <td className="px-6 py-5 align-middle">
+                   <RequestStatusIndicator status={req.status} />
+                   {req.status === ItemStatus.LOGISTIC_APPROVED && req.logisticApprover && (
+                       <p className="text-[10px] text-slate-400 mt-1.5 ml-1 flex items-center gap-1">
+                           <span className="w-1 h-1 rounded-full bg-emerald-400"></span>
+                           by {req.logisticApprover.split(' ')[0]}
+                       </p>
+                   )}
                 </td>
-                <td className="px-6 py-4 text-sm font-medium text-right lg:whitespace-nowrap">
-                  <div className="flex items-center justify-end space-x-2">
+
+                {/* Column 5: Actions (Hover Reveal) */}
+                <td className="px-6 py-5 align-middle text-right">
+                  <div className="flex items-center justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200">
+                    {/* Follow Up Button */}
                     {(currentUser.role === "Staff" || currentUser.role === "Leader") &&
                       (req.status === ItemStatus.PENDING || req.status === ItemStatus.LOGISTIC_APPROVED) && (
-                        <Tooltip text={followUpTooltip} position="left">
                           <button
                             onClick={(e) => { e.stopPropagation(); onFollowUpClick(req); }}
                             disabled={isFollowUpDisabled}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-info-text bg-info-light rounded-lg shadow-sm hover:bg-blue-200 disabled:bg-gray-200 disabled:text-gray-500"
+                            className={`p-2 rounded-full transition-colors ${isFollowUpDisabled ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'}`}
+                            title={followUpTooltip}
                           >
                             <BellIcon className="w-4 h-4" />
-                            <span>Follow Up</span>
                           </button>
-                        </Tooltip>
                       )}
+
+                    {/* Admin Registration Action */}
                     {req.status === ItemStatus.ARRIVED && !req.isRegistered && (currentUser.role === "Admin Logistik" || currentUser.role === "Super Admin") ? (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onOpenStaging(req); }}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-semibold text-white bg-tm-primary rounded-lg shadow-sm hover:bg-tm-primary-hover"
-                      >
-                        <RegisterIcon className="w-4 h-4" />
-                        <span>Catat Aset</span>
-                      </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onOpenStaging(req); }}
+                            className="p-2 text-emerald-600 bg-emerald-50 rounded-full hover:bg-emerald-100 transition-colors shadow-sm"
+                            title="Catat aset ke inventori"
+                          >
+                            <RegisterIcon className="w-4 h-4" />
+                          </button>
                     ) : (
-                      <button onClick={(e) => { e.stopPropagation(); onDetailClick(req); }} className="flex items-center justify-center w-8 h-8 text-gray-500 transition-colors bg-gray-100 rounded-full hover:bg-info-light hover:text-info-text">
-                        <EyeIcon className="w-5 h-5" />
-                      </button>
+                      /* Detail Button */
+                          <button onClick={(e) => { e.stopPropagation(); onDetailClick(req); }} className="p-2 text-slate-400 hover:text-tm-primary hover:bg-blue-50 rounded-full transition-colors" title="Lihat Detail">
+                            <EyeIcon className="w-4 h-4" />
+                          </button>
                     )}
+
+                    {/* Delete Button */}
                     {(currentUser.role === "Admin Purchase" || currentUser.role === "Super Admin") && (
-                      <button onClick={(e) => { e.stopPropagation(); onDeleteClick(req.id); }} className="flex items-center justify-center w-8 h-8 text-gray-500 transition-colors bg-gray-100 rounded-full hover:bg-danger-light hover:text-danger-text">
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
+                          <button onClick={(e) => { e.stopPropagation(); onDeleteClick(req.id); }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors" title="Hapus Permintaan">
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
                     )}
                   </div>
+                   {/* Mobile View Placeholder */}
+                   <div className="sm:hidden group-hover:hidden flex justify-end text-slate-300">
+                       <BsThreeDotsVertical className="w-5 h-5" />
+                   </div>
                 </td>
               </tr>
             );
           })
         ) : (
           <tr>
-            <td colSpan={isBulkSelectMode ? 6 : 5} className="px-6 py-12 text-center text-gray-500">
-              <div className="flex flex-col items-center">
-                <InboxIcon className="w-12 h-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">Tidak Ada Data Request</h3>
-                <p className="mt-1 text-sm text-gray-500">Ubah filter atau buat request baru.</p>
+            <td colSpan={isBulkSelectMode ? 6 : 5} className="px-6 py-16 text-center">
+              <div className="flex flex-col items-center justify-center">
+                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-100">
+                    <InboxIcon className="w-10 h-10 text-slate-300" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-700">Tidak Ada Permintaan</h3>
+                <p className="text-sm text-slate-500 mt-1 max-w-xs mx-auto">
+                    Belum ada data permintaan yang sesuai dengan filter Anda. Silakan buat permintaan baru atau ubah filter pencarian.
+                </p>
               </div>
             </td>
           </tr>

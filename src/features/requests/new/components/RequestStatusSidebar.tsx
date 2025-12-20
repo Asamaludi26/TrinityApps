@@ -153,7 +153,14 @@ export const RequestStatusSidebar: React.FC<RequestStatusSidebarProps> = (props)
                 // Actor: Super Admin / CEO
                  return (
                     <div className="space-y-3">
-                        <ActionButton onClick={() => onFinalCeoApproval(request.id)} disabled={isLoading} text="Berikan Persetujuan Final" color="success" icon={CheckIcon} />
+                        <ActionButton 
+                            onClick={() => onFinalCeoApproval(request.id)} 
+                            disabled={isLoading || !isPurchaseFormValid} 
+                            text="Berikan Persetujuan Final" 
+                            color="success" 
+                            icon={CheckIcon}
+                            title={!isPurchaseFormValid ? "Detail pembelian belum lengkap. Mohon hubungi tim Purchase." : "Persetujuan akhir"}
+                        />
                         <ActionButton onClick={onOpenReviewModal} disabled={isLoading} text="Tolak / Revisi" color="danger" icon={CloseIcon} />
                     </div>
                 );
