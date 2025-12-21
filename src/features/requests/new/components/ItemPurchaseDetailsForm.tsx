@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PurchaseDetails, RequestItem } from '../../../../types';
 import { ChevronDownIcon } from '../../../../components/icons/ChevronDownIcon';
 import DatePicker from '../../../../components/ui/DatePicker';
@@ -13,27 +13,36 @@ interface ItemPurchaseDetailsFormProps {
 }
 
 export const ItemPurchaseDetailsForm: React.FC<ItemPurchaseDetailsFormProps> = ({ item, approvedQuantity, onChange, isDisabled = false, initialData }) => {
-    // Initialize state once
-    const [purchasePrice, setPurchasePrice] = useState<number | ''>(initialData?.purchasePrice ?? '');
-    const [vendor, setVendor] = useState(initialData?.vendor ?? '');
-    const [poNumber, setPoNumber] = useState(initialData?.poNumber ?? '');
-    const [invoiceNumber, setInvoiceNumber] = useState(initialData?.invoiceNumber ?? '');
-    const [purchaseDate, setPurchaseDate] = useState<Date | null>(initialData?.purchaseDate ? new Date(initialData.purchaseDate) : new Date());
-    const [warrantyEndDate, setWarrantyEndDate] = useState<Date | null>(initialData?.warrantyEndDate ? new Date(initialData.warrantyEndDate) : null);
+    // FIX: State initialization is now also handled via useEffect to sync with props
+    const [purchasePrice, setPurchasePrice] = useState<number | ''>('');
+    const [vendor, setVendor] = useState('');
+    const [poNumber, setPoNumber] = useState('');
+    const [invoiceNumber, setInvoiceNumber] = useState('');
+    const [purchaseDate, setPurchaseDate] = useState<Date | null>(new Date());
+    const [warrantyEndDate, setWarrantyEndDate] = useState<Date | null>(null);
+    const [warrantyPeriod, setWarrantyPeriod] = useState<number | ''>('');
     
-    const calculateWarrantyMonths = (start: Date | null, end: Date | null) => {
-        if (start && end && end > start) {
-            return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+    // Sync state with initialData when it changes
+    useEffect(() => {
+        if (initialData) {
+            setPurchasePrice(initialData.purchasePrice ?? '');
+            setVendor(initialData.vendor ?? '');
+            setPoNumber(initialData.poNumber ?? '');
+            setInvoiceNumber(initialData.invoiceNumber ?? '');
+            setPurchaseDate(initialData.purchaseDate ? new Date(initialData.purchaseDate) : new Date());
+            setWarrantyEndDate(initialData.warrantyEndDate ? new Date(initialData.warrantyEndDate) : null);
+            
+            // Recalculate warranty period if needed
+            if (initialData.purchaseDate && initialData.warrantyEndDate) {
+                const start = new Date(initialData.purchaseDate);
+                const end = new Date(initialData.warrantyEndDate);
+                if (end > start) {
+                    const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+                    setWarrantyPeriod(months);
+                }
+            }
         }
-        return '';
-    };
-
-    const [warrantyPeriod, setWarrantyPeriod] = useState<number | ''>(
-        calculateWarrantyMonths(
-            initialData?.purchaseDate ? new Date(initialData.purchaseDate) : new Date(),
-            initialData?.warrantyEndDate ? new Date(initialData.warrantyEndDate) : null
-        )
-    );
+    }, [initialData]);
     
     const [isExpanded, setIsExpanded] = useState(!isDisabled);
 

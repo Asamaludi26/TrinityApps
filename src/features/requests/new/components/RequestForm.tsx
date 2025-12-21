@@ -315,7 +315,12 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     localStorage.removeItem(userDraftKey);
     window.dispatchEvent(new Event('storage'));
     
-    const cleanItems = items.map(({ tempCategoryId, tempTypeId, availableStock, unit, ...rest }) => rest);
+    // FIX: Map temporary IDs to actual properties expected by backend DTO
+    const cleanItems: RequestItem[] = items.map(({ tempCategoryId, tempTypeId, availableStock, unit, ...rest }) => ({
+        ...rest,
+        categoryId: tempCategoryId,
+        typeId: tempTypeId
+    }));
 
     onCreateRequest({
       items: cleanItems,

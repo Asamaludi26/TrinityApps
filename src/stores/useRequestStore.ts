@@ -74,7 +74,14 @@ export const useRequestStore = create<RequestState>((set, get) => ({
   // --- NEW REQUESTS ---
   addRequest: async (requestData) => {
     const current = get().requests;
-    const newId = `REQ-${String(current.length + 1).padStart(3, '0')}`;
+    
+    // FIX: Gunakan Max ID + 1 untuk mencegah duplikasi jika ada request yang dihapus
+    const maxId = current.reduce((max, r) => {
+        const idNum = parseInt(r.id.split('-')[1]);
+        return !isNaN(idNum) && idNum > max ? idNum : max;
+    }, 0);
+    const newId = `REQ-${String(maxId + 1).padStart(3, '0')}`;
+
     const requestDate = new Date(requestData.requestDate);
     const docNumber = generateDocumentNumber('REQ', current, requestDate);
     

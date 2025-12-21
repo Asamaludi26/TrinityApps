@@ -208,16 +208,31 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
     setIsLoading(true);
     try {
       const selected = requests.filter(r => selectedRequestIds.includes(r.id));
+      let successCount = 0;
+
       if (type === 'delete') {
         await Promise.all(selected.map(r => deleteRequest(r.id)));
-        addNotificationUI(`${selected.length} permintaan berhasil dihapus.`, 'success');
+        successCount = selected.length;
+        addNotificationUI(`${successCount} permintaan berhasil dihapus.`, 'success');
       } else {
-        await Promise.all(selected.map(req => {
-           if (req.status === ItemStatus.PENDING) return updateRequest(req.id, { status: ItemStatus.LOGISTIC_APPROVED, logisticApprover: currentUser.name, logisticApprovalDate: new Date().toISOString() });
+        // FIX: Hanya setujui yang statusnya PENDING
+        const updatePromises = selected.map(req => {
+           if (req.status === ItemStatus.PENDING) {
+               successCount++;
+               return updateRequest(req.id, { status: ItemStatus.LOGISTIC_APPROVED, logisticApprover: currentUser.name, logisticApprovalDate: new Date().toISOString() });
+           }
            return Promise.resolve();
-        }));
-        addNotificationUI(`${selected.length} permintaan berhasil disetujui Logistik.`, 'success');
+        });
+        
+        await Promise.all(updatePromises);
+        
+        if (successCount > 0) {
+            addNotificationUI(`${successCount} permintaan berhasil disetujui Logistik.`, 'success');
+        } else {
+            addNotificationUI('Tidak ada permintaan yang dapat disetujui (Status harus Menunggu).', 'info');
+        }
       }
+      
       setSelectedRequestIds([]);
       setIsBulkSelectMode(false);
       setIsBulkApproveModalOpen(false);
@@ -403,7 +418,6 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
           onOpenReviewModal={() => setIsReviewModalOpen(true)}
           onOpenCancellationModal={() => {}}
           onOpenFollowUpModal={() => setIsFollowUpModalOpen(true)}
-          onLogisticApproval={(id) => updateRequest(id, { status: ItemStatus.LOGISTIC_APPROVED, logisticApprover: currentUser.name, logisticApprovalDate: new Date().toISOString() })}
           onSubmitForCeoApproval={async (id, data) => {
              const today = new Date().toISOString();
              const purchaseDetails: any = {};
@@ -433,11 +447,8 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
              setView("list");
              addNotificationUI('Request berhasil diajukan ke CEO.', 'success');
           }}
-          onFinalCeoApproval={(id) => updateRequest(id, { status: ItemStatus.APPROVED, finalApprover: currentUser.name, finalApprovalDate: new Date().toISOString() })}
           onStartProcurement={() => updateRequest(selectedRequest.id, { status: ItemStatus.PURCHASING })}
-          onUpdateRequestStatus={(status) => updateRequest(selectedRequest.id, { status })}
           onOpenStaging={() => handleOpenStaging(selectedRequest)}
-          onCeoDisposition={(id) => updateRequest(id, { isPrioritizedByCEO: true, ceoDispositionDate: new Date().toISOString() })}
           onAcknowledgeProgressUpdate={() => {
             if (selectedRequest?.progressUpdateRequest) {
                 updateRequest(selectedRequest.id, { 
@@ -571,7 +582,7 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
 
       {isBulkApproveModalOpen && (
         <Modal isOpen={true} onClose={() => setIsBulkApproveModalOpen(false)} title="Setujui Masal" size="md">
-           <div className="p-4"><p className="text-sm text-gray-600">Anda akan memberikan <strong>Persetujuan Logistik</strong> untuk {selectedRequestIds.length} permintaan sekaligus. Lanjutkan?</p></div>
+           <div className="p-4"><p className="text-sm text-gray-600">Anda akan memberikan <strong>Persetujuan Logistik</strong> untuk {selectedRequestIds.length} permintaan sekaligus. Hanya permintaan dengan status "Menunggu" yang akan diproses. Lanjutkan?</p></div>
            <div className="flex justify-end gap-3 p-4 border-t">
              <button onClick={() => setIsBulkApproveModalOpen(false)} className="px-4 py-2 text-sm font-medium">Batal</button>
              <button onClick={() => handleBulkAction('approve')} disabled={isLoading} className="px-6 py-2 bg-success text-white rounded-lg text-sm font-bold shadow-md">Ya, Setujui Semua</button>
