@@ -3,9 +3,12 @@ import { create } from 'zustand';
 import { Request, LoanRequest, AssetReturn, ItemStatus, LoanRequestStatus, AssetReturnStatus, RequestItem, LoanItem, Activity, AssetStatus } from '../types';
 import * as api from '../services/api';
 import { useNotificationStore } from './useNotificationStore';
+import { useUIStore } from './useUIStore'; 
 import { useMasterDataStore } from './useMasterDataStore';
-import { useAssetStore } from './useAssetStore'; // Import Asset Store
+import { useAssetStore } from './useAssetStore'; 
 import { generateDocumentNumber } from '../utils/documentNumberGenerator';
+// Update import
+import { WhatsAppService, sendWhatsAppSimulation, WAMessagePayload } from '../services/whatsappIntegration';
 
 interface RequestState {
   requests: Request[];
@@ -33,6 +36,18 @@ interface RequestState {
   addReturn: (returnData: AssetReturn) => Promise<void>;
   updateReturn: (id: string, data: Partial<AssetReturn>) => Promise<void>;
 }
+
+// Helper untuk menampilkan simulasi notifikasi WA via MODAL
+const triggerWAModal = (payload: WAMessagePayload) => {
+    // 1. Tampilkan Toast kecil sebagai feedback instan
+    useNotificationStore.getState().addToast('Pesan WhatsApp Dibuat', 'success', { duration: 2000 });
+    
+    // 2. Buka Modal untuk menampilkan isi pesan
+    useUIStore.getState().openWAModal(payload);
+    
+    // 3. Log console tetap ada untuk debugging
+    console.log(`%c [WA SIMULATION - ${payload.groupName}] \n${payload.message}`, 'background: #25D366; color: white; padding: 4px; border-radius: 4px;');
+};
 
 export const useRequestStore = create<RequestState>((set, get) => ({
   requests: [],
@@ -64,13 +79,9 @@ export const useRequestStore = create<RequestState>((set, get) => ({
     const docNumber = generateDocumentNumber('REQ', current, requestDate);
     
     // --- OPTIMIZED LOGIC: O(N) Frequency Map for Stock Check ---
-    // Mencegah iterasi berulang pada array assets yang besar di dalam loop items.
     const allAssets = useAssetStore.getState().assets;
-    
-    // 1. Build Inventory Map: "Name|Brand" -> Available Count
     const inventoryMap = new Map<string, number>();
     
-    // Hanya loop satu kali pada array assets (Performance safe untuk 10k+ data)
     for (const asset of allAssets) {
         if (asset.status === AssetStatus.IN_STORAGE) {
             const key = `${asset.name.trim()}|${asset.brand.trim()}`.toLowerCase();
@@ -81,20 +92,13 @@ export const useRequestStore = create<RequestState>((set, get) => ({
     const itemStatuses: Record<number, { status: 'stock_allocated' | 'procurement_needed' | 'approved' | 'rejected' | 'partial'; approvedQuantity: number; reason?: string }> = {};
     let needsProcurement = false;
 
-    // 2. Check Requests against Map (O(1) lookup)
     requestData.items.forEach(item => {
         const key = `${item.itemName.trim()}|${item.itemTypeBrand.trim()}`.toLowerCase();
         const availableStock = inventoryMap.get(key) || 0;
-
-        // Logic Simulasi Reservasi:
-        // Di sistem real (backend), kita harus melakukan "Soft Lock" atau mengurangi inventoryMap sementara
-        // agar jika ada item duplikat di request yang sama, stok tidak dihitung ganda.
         const requestedQty = item.quantity;
         
         if (availableStock >= requestedQty) {
-            // Update map sementara untuk item berikutnya dalam request yang sama
             inventoryMap.set(key, availableStock - requestedQty); 
-            
             itemStatuses[item.id] = {
                 status: 'stock_allocated',
                 approvedQuantity: item.quantity,
@@ -112,7 +116,6 @@ export const useRequestStore = create<RequestState>((set, get) => ({
 
     const initialStatus = !needsProcurement ? ItemStatus.AWAITING_HANDOVER : ItemStatus.PENDING;
 
-    // Auto-approve metadata
     const autoApprovalData = !needsProcurement ? {
         logisticApprover: 'System (Auto-Stock)',
         logisticApprovalDate: new Date().toISOString(),
@@ -142,7 +145,7 @@ export const useRequestStore = create<RequestState>((set, get) => ({
     await api.updateData('app_requests', updated);
     set({ requests: updated });
 
-    // --- NOTIFICATION ---
+    // --- NOTIFICATION & WA SIMULATION ---
     const addSystemNotification = useNotificationStore.getState().addSystemNotification;
     const users = useMasterDataStore.getState().users;
     
@@ -158,6 +161,13 @@ export const useRequestStore = create<RequestState>((set, get) => ({
                 : `membuat request #${newId} (Perlu Pengadaan).`
         });
     });
+
+    // TRIGGER WA: NEW REQUEST
+    if (initialStatus === ItemStatus.PENDING) {
+        const waPayload = WhatsAppService.generateNewRequestPayload(newRequest);
+        await sendWhatsAppSimulation(waPayload);
+        triggerWAModal(waPayload);
+    }
   },
 
   updateRequest: async (id, data) => {
@@ -167,12 +177,61 @@ export const useRequestStore = create<RequestState>((set, get) => ({
     await api.updateData('app_requests', updated);
     set({ requests: updated });
     
-    // --- NOTIFICATION LOGIC ---
+    // --- NOTIFICATION & WA SIMULATION LOGIC ---
     if (originalRequest && data.status && data.status !== originalRequest.status) {
+        const updatedReq = updated.find(r => r.id === id)!;
         const addSystemNotification = useNotificationStore.getState().addSystemNotification;
         const users = useMasterDataStore.getState().users;
-        
         const recipient = users.find(u => u.name === originalRequest.requester);
+        
+        // 1. WA: REJECTED
+        if (data.status === ItemStatus.REJECTED) {
+             const rejector = data.rejectedBy || 'Admin';
+             // FIX: Gunakan updatedReq (data terbaru) agar status yang dikirim ke WA adalah 'Ditolak', bukan 'Pending'
+             const waPayload = WhatsAppService.generateRejectionPayload(updatedReq, rejector, data.rejectionReason || '-');
+             await sendWhatsAppSimulation(waPayload);
+             triggerWAModal(waPayload);
+        }
+
+        // 2. WA: LOGISTIC APPROVED
+        if (data.status === ItemStatus.LOGISTIC_APPROVED) {
+            const approver = data.logisticApprover || 'Admin Logistik';
+            const waPayload = WhatsAppService.generateLogisticApprovalPayload(updatedReq, approver);
+            await sendWhatsAppSimulation(waPayload);
+            triggerWAModal(waPayload);
+        }
+
+        // 3. WA: SUBMIT TO CEO (AWAITING CEO)
+        if (data.status === ItemStatus.AWAITING_CEO_APPROVAL) {
+             const approver = data.logisticApprover || 'Admin Purchase'; // Biasanya Purchase yang submit
+             const waPayload = WhatsAppService.generateSubmitToCeoPayload(updatedReq, approver);
+             await sendWhatsAppSimulation(waPayload);
+             triggerWAModal(waPayload);
+        }
+
+        // 4. WA: FINAL APPROVED
+        if (data.status === ItemStatus.APPROVED) {
+             const approver = data.finalApprover || 'CEO';
+             const waPayload = WhatsAppService.generateFinalApprovalPayload(originalRequest, approver);
+             await sendWhatsAppSimulation(waPayload);
+             triggerWAModal(waPayload);
+        }
+
+        // 5. WA: PROCUREMENT PROGRESS (Purchasing & In Delivery)
+        if (data.status === ItemStatus.PURCHASING || data.status === ItemStatus.IN_DELIVERY) {
+             const waPayload = WhatsAppService.generateProcurementUpdatePayload(updatedReq, data.status);
+             await sendWhatsAppSimulation(waPayload);
+             triggerWAModal(waPayload);
+        }
+
+        // 6. WA: ARRIVED (Barang Tiba)
+        if (data.status === ItemStatus.ARRIVED) {
+             const waPayload = WhatsAppService.generateItemsArrivedPayload(updatedReq); // Use updatedReq to catch arrivalDate
+             await sendWhatsAppSimulation(waPayload);
+             triggerWAModal(waPayload);
+        }
+
+        // Existing Notification Logic Kept
         if (recipient) {
             const isApproval = [ItemStatus.LOGISTIC_APPROVED, ItemStatus.APPROVED, ItemStatus.AWAITING_CEO_APPROVAL].includes(data.status);
             const isRejection = data.status === ItemStatus.REJECTED;
@@ -233,8 +292,6 @@ export const useRequestStore = create<RequestState>((set, get) => ({
     // Cek apakah semua item sudah terdaftar penuh
     const allItemsRegistered = updatedRequest.items.every((item) => {
       const status = updatedRequest.itemStatuses?.[item.id];
-      
-      // Critical Check: Stock allocated items are considered "registered" instantly
       if (status?.status === 'stock_allocated') return true;
       if (status?.status === 'rejected') return true;
 

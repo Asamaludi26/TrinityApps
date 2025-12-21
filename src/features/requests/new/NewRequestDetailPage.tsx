@@ -44,13 +44,13 @@ interface RequestDetailPageProps {
     onOpenReviewModal: () => void;
     onOpenCancellationModal: () => void;
     onOpenFollowUpModal: (req: Request) => void;
-    onLogisticApproval: (id: string) => void;
+    // REMOVED: onLogisticApproval - Moved to Sidebar internal logic
     onSubmitForCeoApproval: (id: string, data: Record<number, Omit<PurchaseDetails, 'filledBy' | 'fillDate'>>) => void;
-    onFinalCeoApproval: (id: string) => void;
+    // REMOVED: onFinalCeoApproval - Moved to Sidebar internal logic
     onStartProcurement: () => void;
-    onUpdateRequestStatus: (status: ItemStatus) => void;
+    // REMOVED: onUpdateRequestStatus - Moved to Sidebar internal logic
     onOpenStaging: (req: Request) => void;
-    onCeoDisposition: (id: string) => void;
+    // REMOVED: onCeoDisposition - Moved to Sidebar internal logic
     onAcknowledgeProgressUpdate: () => void;
     onRequestProgressUpdate: (id: string) => void;
     onFollowUpToCeo: (req: Request) => void;
@@ -60,7 +60,7 @@ interface RequestDetailPageProps {
 }
 
 const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
-    const { request: initialRequest, currentUser, assets, onBackToList, onShowPreview, users, onSubmitForCeoApproval, assetCategories, onUpdateRequestStatus, onOpenReviewModal, isLoading, onOpenStaging } = props;
+    const { request: initialRequest, currentUser, assets, onBackToList, onShowPreview, users, onSubmitForCeoApproval, assetCategories, onOpenReviewModal, isLoading, onOpenStaging } = props;
     const [isActionSidebarExpanded, setIsActionSidebarExpanded] = useState(true);
     const [itemPurchaseDetails, setItemPurchaseDetails] = useState<Record<number, Omit<PurchaseDetails, 'filledBy' | 'fillDate'>>>({});
     const initializedRef = useRef(false);
@@ -331,7 +331,7 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
                     onFinalSubmit={handleFinalSubmitForApproval}
                     isPurchaseFormValid={isPurchaseFormValid}
                     onOpenCancellationModal={() => setIsCancelModalOpen(true)}
-                    onOpenStaging={() => onOpenStaging(request)} // FIX: Directly call parent onOpenStaging to avoid double modal
+                    onOpenStaging={() => onOpenStaging(request)} 
                 />
             }
         >

@@ -30,12 +30,18 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footerC
   // Professional scroll lock implementation to prevent layout shift (the "vibration")
   useEffect(() => {
     if (isOpen) {
+      // FIX: Jangan simpan style saat ini jika body sudah hidden (karena modal lain)
+      // Ini mencegah bug di mana scrollbar hilang permanen jika modal bertumpuk
       const originalBodyOverflow = document.body.style.overflow;
       const originalBodyPaddingRight = document.body.style.paddingRight;
-      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      
+      const isAlreadyHidden = originalBodyOverflow === 'hidden';
 
-      document.body.style.overflow = 'hidden';
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
+      if (!isAlreadyHidden) {
+          const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+          document.body.style.overflow = 'hidden';
+          document.body.style.paddingRight = `${scrollbarWidth}px`;
+      }
       
       const handleEscape = (event: KeyboardEvent) => {
         if (event.key === 'Escape') {
@@ -45,8 +51,11 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footerC
       document.addEventListener('keydown', handleEscape);
 
       return () => {
-        document.body.style.overflow = originalBodyOverflow;
-        document.body.style.paddingRight = originalBodyPaddingRight;
+        // Hanya restore jika kita yang mengubahnya (tadi tidak hidden)
+        if (!isAlreadyHidden) {
+            document.body.style.overflow = originalBodyOverflow;
+            document.body.style.paddingRight = originalBodyPaddingRight;
+        }
         document.removeEventListener('keydown', handleEscape);
       };
     }

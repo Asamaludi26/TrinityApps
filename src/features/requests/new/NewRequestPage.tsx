@@ -1,4 +1,5 @@
 
+// ... keep imports ...
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Request,
@@ -249,7 +250,7 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
       });
 
       let nextStatus = selectedRequest.status;
-      let extraData: Partial<Request> = {};
+      let extraData: any = {}; // Changed to any to avoid spread error
 
       if (!hasAnyApproved) {
         nextStatus = ItemStatus.REJECTED;
@@ -406,7 +407,12 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
           onSubmitForCeoApproval={async (id, data) => {
              const today = new Date().toISOString();
              const purchaseDetails: any = {};
-             Object.entries(data).forEach(([k, v]) => purchaseDetails[Number(k)] = { ...v, filledBy: currentUser.name, fillDate: today });
+             // Explicit cast to object to avoid spread types error
+             Object.entries(data).forEach(([k, v]) => {
+                 if (v && typeof v === 'object') {
+                    purchaseDetails[Number(k)] = { ...(v as object), filledBy: currentUser.name, fillDate: today };
+                 }
+             });
              
              // Create activity log for transparency
              const submitActivity: Activity = {
@@ -417,7 +423,7 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
                 payload: { text: 'Mengajukan detail pembelian untuk persetujuan CEO.' }
              };
              
-             const updatedActivityLog = [submitActivity, ...(selectedRequest.activityLog || [])];
+             const updatedActivityLog = [submitActivity, ...(selectedRequest?.activityLog || [])];
              
              await updateRequest(id, { 
                  status: ItemStatus.AWAITING_CEO_APPROVAL, 
@@ -432,7 +438,13 @@ const NewRequestPage: React.FC<NewRequestPageProps> = ({
           onUpdateRequestStatus={(status) => updateRequest(selectedRequest.id, { status })}
           onOpenStaging={() => handleOpenStaging(selectedRequest)}
           onCeoDisposition={(id) => updateRequest(id, { isPrioritizedByCEO: true, ceoDispositionDate: new Date().toISOString() })}
-          onAcknowledgeProgressUpdate={() => updateRequest(selectedRequest.id, { progressUpdateRequest: { ...selectedRequest.progressUpdateRequest!, isAcknowledged: true }})}
+          onAcknowledgeProgressUpdate={() => {
+            if (selectedRequest?.progressUpdateRequest) {
+                updateRequest(selectedRequest.id, { 
+                    progressUpdateRequest: { ...selectedRequest.progressUpdateRequest, isAcknowledged: true }
+                });
+            }
+          }}
           onRequestProgressUpdate={(id) => updateRequest(id, { progressUpdateRequest: { requestedBy: currentUser.name, requestDate: new Date().toISOString(), isAcknowledged: false }})}
           onFollowUpToCeo={() => {}}
           onInitiateHandoverFromRequest={onInitiateHandoverFromRequest}

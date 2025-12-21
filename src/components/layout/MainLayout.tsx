@@ -13,6 +13,7 @@ import { GlobalScannerModal } from '../ui/GlobalScannerModal';
 import { TopLoadingBar } from '../ui/TopLoadingBar';
 import { ContentSkeleton } from '../ui/ContentSkeleton';
 import PreviewModal from '../../features/preview/PreviewModal';
+import { WhatsAppSimulationModal } from '../ui/WhatsAppSimulationModal'; // IMPORT BARU
 
 // Stores
 import { useUIStore } from '../../stores/useUIStore';
@@ -204,6 +205,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         onClose={() => setIsGlobalScannerOpen(false)}
         onScanSuccess={onScanSuccess}
       />
+
+      <WhatsAppSimulationModal />
 
       <PreviewModal
         currentUser={currentUser}

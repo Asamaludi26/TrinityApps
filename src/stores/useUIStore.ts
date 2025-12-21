@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Page } from '../types';
+import { WAMessagePayload } from '../services/whatsappIntegration'; // Import tipe payload
 
 interface UIState {
   activePage: Page;
@@ -10,6 +11,10 @@ interface UIState {
   pageInitialState: any;
   highlightedItemId: string | null;
   
+  // WA Simulation State
+  waModalOpen: boolean;
+  waModalData: WAMessagePayload | null;
+
   // Actions
   setActivePage: (page: Page, initialState?: any) => void;
   setPageLoading: (isLoading: boolean) => void;
@@ -17,6 +22,11 @@ interface UIState {
   clearPageInitialState: () => void;
   setHighlightOnReturn: (itemId: string) => void;
   clearHighlightOnReturn: () => void;
+  
+  // WA Actions
+  openWAModal: (data: WAMessagePayload) => void;
+  closeWAModal: () => void;
+
   resetUIState: () => void;
 }
 
@@ -26,6 +36,8 @@ const initialState = {
   sidebarOpen: false,
   pageInitialState: null,
   highlightedItemId: null,
+  waModalOpen: false,
+  waModalData: null,
 };
 
 export const useUIStore = create<UIState>()(
@@ -50,6 +62,10 @@ export const useUIStore = create<UIState>()(
       setHighlightOnReturn: (itemId: string) => set({ highlightedItemId: itemId }),
       
       clearHighlightOnReturn: () => set({ highlightedItemId: null }),
+
+      // WA Actions
+      openWAModal: (data) => set({ waModalOpen: true, waModalData: data }),
+      closeWAModal: () => set({ waModalOpen: false, waModalData: null }),
 
       resetUIState: () => set(initialState),
     }),

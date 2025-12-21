@@ -227,3 +227,65 @@ async function bootstrap() {
 }
 bootstrap();
 ```
+
+---
+
+## 6. Logika Bisnis Kritis & Migrasi (Wajib Dibaca)
+
+Bagian ini merinci logika kritis yang saat ini berada di Frontend (`useRequestStore.ts`) dan **WAJIB** dipindahkan ke Backend untuk keamanan dan integritas data.
+
+### 6.1. Pencegahan Race Condition pada Stok
+**Masalah:** Dua user me-request item stok terakhir secara bersamaan. Di frontend, keduanya mungkin melihat stok > 0.
+**Solusi Backend:** Gunakan **Database Transactions** saat membuat request.
+
+```typescript
+// assets/assets.service.ts (Contoh Konsep)
+async createRequestWithStockCheck(dto: CreateRequestDto) {
+  return this.prisma.$transaction(async (tx) => {
+    // 1. Loop item request
+    for (const item of dto.items) {
+      // 2. Lock row aset di database (untuk mencegah update konkuren)
+      //    Note: Prisma belum support native "SELECT FOR UPDATE", 
+      //    gunakan raw query atau strategi optimistic locking.
+      
+      const availableStock = await tx.asset.count({
+        where: { name: item.name, status: 'IN_STORAGE' }
+      });
+
+      if (availableStock < item.quantity) {
+        throw new BadRequestException(`Stok untuk ${item.name} tidak cukup.`);
+      }
+
+      // 3. Update status aset menjadi 'BOOKED' atau kurangi stok
+    }
+
+    // 4. Buat Request
+    return tx.request.create({ data: ... });
+  });
+}
+```
+
+### 6.2. Pencegahan "Ghost Item" (Validasi Data)
+**Masalah:** User memanipulasi payload JSON untuk mengirimkan item ID yang tidak ada atau jumlah negatif.
+**Solusi Backend:** Gunakan `class-validator` pada DTO.
+
+```typescript
+// requests/dto/create-request.dto.ts
+export class CreateRequestItemDto {
+  @IsString()
+  @IsNotEmpty()
+  assetId: string;
+
+  @IsInt()
+  @Min(1, { message: "Jumlah minimal 1" })
+  quantity: number;
+}
+```
+Backend harus memverifikasi bahwa `assetId` benar-benar ada di tabel `Asset` sebelum memproses.
+
+### 6.3. Migrasi Logika Kalkulasi Stok
+Logika penentuan status `stock_allocated` vs `procurement_needed` yang ada di `useRequestStore.ts` (Frontend) harus dipindah ke Backend Service.
+Frontend hanya mengirim: "Saya mau 5 Laptop".
+Backend yang menjawab: "OK, 3 dari Stok, 2 harus Beli".
+
+Jangan biarkan Frontend menentukan status alokasi stok.
