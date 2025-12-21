@@ -1,88 +1,95 @@
 # Diagram Sistem
 
-Dokumen ini adalah repositori visual untuk semua diagram arsitektur utama yang digunakan dalam proyek Aplikasi Inventori Aset. Diagram-diagram ini dibuat menggunakan sintaks Mermaid untuk memastikan dokumentasi tetap "hidup" dan mudah diperbarui seiring dengan evolusi kode.
+Dokumen ini berisi diagram teknis mendalam untuk membantu pemahaman alur kerja sistem.
 
-## 1. Diagram C4 - Level 1 (System Context)
+## 1. Siklus Hidup Aset (State Diagram)
 
-Diagram ini menunjukkan gambaran besar: bagaimana sistem "AssetFlow" berinteraksi dengan pengguna dan sistem eksternal lainnya. Tujuannya adalah untuk audiens non-teknis dan teknis agar memahami batasan dan dependensi utama sistem.
+Diagram ini sangat penting untuk backend developer memahami transisi status aset yang valid.
 
 ```mermaid
-graph TD
-    subgraph "Pengguna Internal"
-        A[<b>Staff / Leader</b><br>Karyawan yang membuat<br>request dan menggunakan aset]
-        B[<b>Admin / Super Admin</b><br>Tim yang mengelola inventori<br>dan sistem]
-    end
-
-    C(<b>Aplikasi Inventori Aset</b><br>Sistem terpusat untuk melacak<br>seluruh siklus hidup aset.)
-
-    D[<b>Layanan Email Eksternal</b><br>Sistem pengiriman email<br>untuk notifikasi penting.]
-
-    A -- "Menggunakan (via Web Browser)" --> C
-    B -- "Mengelola (via Web Browser)" --> C
-    C -- "Mengirim Notifikasi via SMTP" --> D
+stateDiagram-v2
+    [*] --> IN_STORAGE: Registrasi Baru / Barang Tiba
     
-    style A fill:#9f7aea,stroke:#333,stroke-width:2px
-    style B fill:#9f7aea,stroke:#333,stroke-width:2px
-    style C fill:#4299e1,stroke:#333,stroke-width:2px
-    style D fill:#6B7280,stroke:#333,stroke-width:2px
+    IN_STORAGE --> IN_USE: Handover / Instalasi
+    IN_STORAGE --> DECOMMISSIONED: Penghapusan Aset
+    
+    IN_USE --> IN_STORAGE: Pengembalian (Return)
+    IN_USE --> DAMAGED: Laporan Kerusakan
+    IN_USE --> IN_STORAGE: Dismantle (Tarik dari Pelanggan)
+
+    DAMAGED --> UNDER_REPAIR: Mulai Perbaikan Internal
+    DAMAGED --> OUT_FOR_REPAIR: Kirim ke Vendor
+
+    UNDER_REPAIR --> IN_STORAGE: Selesai (Stok)
+    UNDER_REPAIR --> IN_USE: Selesai (Kembali ke User)
+    UNDER_REPAIR --> DECOMMISSIONED: Gagal Perbaiki (Scrap)
+
+    OUT_FOR_REPAIR --> IN_STORAGE: Terima dari Vendor
+    
+    DECOMMISSIONED --> [*]
 ```
 
-## 2. Diagram C4 - Level 2 (Containers)
+## 2. Alur Peminjaman Aset (Loan Request Sequence)
 
-Diagram ini memperbesar sistem "AssetFlow" untuk menunjukkan komponen-komponen teknis utama (kontainer) yang dapat di-deploy secara terpisah.
+Menjelaskan interaksi kompleks antara User, Admin, dan Sistem.
 
 ```mermaid
-graph TD
-    A["<b>Pengguna</b><br>(Staff/Admin)<br><br>Mengakses aplikasi<br>melalui browser."]
+sequenceDiagram
+    participant User as Staff (Pemohon)
+    participant FE as Frontend
+    participant BE as Backend API
+    participant DB as Database
+    participant Admin as Admin Logistik
 
-    subgraph "Infrastruktur Server Produksi"
-        B["<b>Aplikasi Frontend</b><br>[React Single-Page App]<br><br>Bertanggung jawab atas semua<br>antarmuka pengguna. Berjalan<br>di browser pengguna."]
-        
-        C["<b>API Backend</b><br>[Server NestJS]<br><br>Menyediakan REST API. Menangani<br>logika bisnis, autentikasi, &<br>validasi data."]
-        
-        D["<b>Database</b><br>[PostgreSQL]<br><br>Penyimpanan data persisten untuk<br>semua entitas: aset, pengguna, dll."]
-    end
+    User->>FE: Buat Request Pinjam
+    FE->>BE: POST /api/loans (items[])
+    BE->>DB: Simpan LoanRequest (Status: PENDING)
+    BE-->>FE: OK
+    
+    Note right of Admin: Admin menerima notifikasi
 
-    A -- "Mengakses via HTTPS" --> B
-    B -- "Memanggil API via HTTPS<br>[Payload JSON]" --> C
-    C -- "Membaca/Menulis Data<br>[TCP/IP]" --> D
+    Admin->>FE: Buka Detail Request
+    FE->>BE: GET /api/loans/:id
+    BE-->>FE: Data Request
+    
+    Admin->>FE: Setujui & Pilih Aset (Assign Asset ID)
+    FE->>BE: PATCH /api/loans/:id/approve
+    
+    activate BE
+    BE->>DB: Update Status Loan -> APPROVED
+    BE->>DB: Create Handover Document (Draft)
+    BE-->>FE: OK
+    deactivate BE
 
-    style B fill:#63b3ed,stroke:#333,stroke-width:2px
-    style C fill:#4299e1,stroke:#333,stroke-width:2px
-    style D fill:#3182ce,stroke:#333,stroke-width:2px
+    User->>FE: Terima Barang & Konfirmasi
+    FE->>BE: POST /api/handovers/confirm
+    BE->>DB: Update Asset Status -> IN_USE (Loaned)
+    BE->>DB: Update Loan Status -> ON_LOAN
 ```
 
-## 3. Diagram Alur Data (Data Flow) - Pembaruan Aset
-
-Diagram ini menggambarkan bagaimana data mengalir melalui sistem saat seorang Admin memperbarui informasi sebuah aset. Ini berguna untuk pengembang dalam memahami interaksi antar komponen.
+## 3. Alur Pencatatan Aset Massal (Bulk Registration)
 
 ```mermaid
 sequenceDiagram
     participant Admin
     participant Frontend
     participant Backend
-    participant Database
+    participant DB
 
-    Admin->>Frontend: Mengisi form & klik "Simpan Perubahan"
-    Frontend->>Backend: PATCH /api/assets/:id (data pembaruan)
+    Admin->>Frontend: Upload CSV / Input Form Massal (100 items)
+    Frontend->>Backend: POST /api/assets/bulk
+    
     activate Backend
+    loop For each item
+        Backend->>Backend: Generate Unique ID (AST-YYYY-XXXX)
+        Backend->>Backend: Validate Data
+    end
     
-    Backend->>Backend: Validasi data (DTO)
-    Backend->>Backend: Cek otorisasi (apakah user boleh mengedit?)
+    Backend->>DB: Prisma.asset.createMany(...)
+    DB-->>Backend: Success Count
     
-    Backend->>Database: UPDATE assets SET ... WHERE id = :id
-    activate Database
-    Database-->>Backend: Hasil update (1 baris terpengaruh)
-    deactivate Database
-
-    Backend->>Database: INSERT INTO activity_log (...)
-    activate Database
-    Database-->>Backend: Log tersimpan
-    deactivate Database
+    Backend->>DB: Create ActivityLog (Bulk Action)
     
-    Backend-->>Frontend: Response 200 OK (data aset yang sudah diperbarui)
+    Backend-->>Frontend: 201 Created (Count: 100)
     deactivate Backend
-    
-    Frontend->>Admin: Tampilkan notifikasi "Aset berhasil diperbarui"
-    Frontend->>Admin: Perbarui data di tabel UI
 ```
