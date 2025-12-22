@@ -30,6 +30,7 @@ src/
 │   └── useUIStore.ts
 ├── types/               # Definisi Tipe TypeScript Global
 ├── utils/               # Fungsi utilitas murni (Helper functions)
+│   └── uuid.ts          # Generator ID unik standar
 ├── App.tsx              # Komponen Root & Routing Utama
 └── main.tsx             # Entry point React DOM
 ```
@@ -102,9 +103,29 @@ export const useAssetStore = create<AssetState>((set) => ({
 }));
 ```
 
-## 4. Optimasi Performa (Production Ready)
+## 4. Penanganan Formulir & Identitas
 
-### 4.1. Code Splitting (Lazy Loading)
+### 4.1. Generasi ID (UUID)
+Jangan menggunakan `Date.now()` atau `Math.random()` sederhana untuk *key* atau *ID* item, terutama dalam formulir dinamis (seperti daftar item request). Ini berisiko menyebabkan duplikasi ID (*collision*) saat item dibuat sangat cepat atau secara massal.
+
+**Gunakan utilitas standar:**
+```typescript
+import { generateUUID } from '../../utils/uuid';
+
+const newItem = {
+  id: generateUUID(), // Menghasilkan UUID v4
+  // ...
+};
+```
+
+### 4.2. Validasi Formulir
+Validasi harus dilakukan setidaknya dua kali:
+1.  **Client-side (UX):** Berikan umpan balik instan (misal: tombol disable, pesan error di bawah input).
+2.  **Server-side (Security):** Backend wajib memvalidasi ulang semua data.
+
+## 5. Optimasi Performa (Production Ready)
+
+### 5.1. Code Splitting (Lazy Loading)
 Jangan memuat seluruh aplikasi sekaligus. Pecah kode berdasarkan halaman (Route) menggunakan `React.lazy` dan `Suspense`.
 
 **Implementasi di `App.tsx`:**
@@ -135,10 +156,10 @@ const AppContent = () => {
 }
 ```
 
-### 4.2. Error Boundaries
+### 5.2. Error Boundaries
 Mencegah seluruh aplikasi crash ("White Screen of Death") jika terjadi error pada satu komponen kecil. Gunakan `react-error-boundary` untuk membungkus aplikasi atau fitur utama.
 
-## 5. Integrasi API (Migrasi dari Mock)
+## 6. Integrasi API (Migrasi dari Mock)
 
 Saat ini `src/services/api.ts` menggunakan Mock Data. Untuk produksi, ini harus diganti dengan panggilan `fetch` atau `axios` ke Backend NestJS.
 

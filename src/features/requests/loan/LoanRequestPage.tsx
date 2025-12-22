@@ -1,21 +1,25 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Page, User, Asset, Division, LoanRequest, LoanRequestStatus, ItemStatus, AssetStatus, Handover, AssetCategory, Notification, LoanItem, ParsedScanResult, AssetReturn, AssetReturnStatus } from '../../../types';
-import { useSortableData, SortConfig } from '../../../hooks/useSortableData';
+import { Page, User, LoanRequest, LoanRequestStatus, ItemStatus, AssetStatus, Handover, AssetCategory, LoanItem, ParsedScanResult, AssetReturnStatus } from '../../../types';
+import { useSortableData } from '../../../hooks/useSortableData';
 import { useNotification } from '../../../providers/NotificationProvider';
 import { PaginationControls } from '../../../components/ui/PaginationControls';
 import Modal from '../../../components/ui/Modal';
-import { InboxIcon } from '../../../components/icons/InboxIcon';
 import { SearchIcon } from '../../../components/icons/SearchIcon';
-import { SortIcon } from '../../../components/icons/SortIcon';
-import { SortAscIcon } from '../../../components/icons/SortAscIcon';
-import { SortDescIcon } from '../../../components/icons/SortDescIcon';
-import { EyeIcon } from '../../../components/icons/EyeIcon';
 import { FilterIcon } from '../../../components/icons/FilterIcon';
 import { CloseIcon } from '../../../components/icons/CloseIcon';
+import { ExportIcon } from '../../../components/icons/ExportIcon'; // Added ExportIcon
 import { CustomSelect } from '../../../components/ui/CustomSelect';
-import LoanRequestForm from './LoanRequestForm';
 import LoanRequestDetailPage from './LoanRequestDetailPage';
 import { generateDocumentNumber } from '../../../utils/documentNumberGenerator';
+import { exportToCSV } from '../../../utils/csvExporter'; // Added csvExporter
+
+// Components
+import { LoanRequestForm } from './components/LoanRequestForm';
+import { LoanRequestTable } from './components/LoanRequestTable';
+import { ReturnRequestTable } from './components/ReturnRequestTable';
+import { ExportLoanRequestModal } from './components/ExportLoanRequestModal'; // Added ExportModal
+import DatePicker from '../../../components/ui/DatePicker';
 
 // Stores
 import { useRequestStore } from '../../../stores/useRequestStore';
@@ -49,130 +53,6 @@ interface LoanRequestPageProps {
     setHandovers?: any;
     addNotification?: any;
 }
-
-const getStatusClass = (status: LoanRequestStatus) => {
-    switch (status) {
-        case LoanRequestStatus.PENDING: return 'bg-warning-light text-warning-text';
-        case LoanRequestStatus.APPROVED: return 'bg-sky-100 text-sky-700';
-        case LoanRequestStatus.ON_LOAN: return 'bg-info-light text-info-text';
-        case LoanRequestStatus.RETURNED: return 'bg-success-light text-success-text';
-        case LoanRequestStatus.REJECTED: return 'bg-danger-light text-danger-text';
-        case LoanRequestStatus.OVERDUE: return 'bg-red-200 text-red-800 font-bold';
-        case LoanRequestStatus.AWAITING_RETURN: return 'bg-blue-100 text-blue-800';
-        default: return 'bg-gray-100 text-gray-800';
-    }
-};
-
-const getReturnStatusClass = (status: AssetReturnStatus) => {
-    switch (status) {
-        case AssetReturnStatus.PENDING_APPROVAL: return 'bg-warning-light text-warning-text';
-        case AssetReturnStatus.APPROVED: return 'bg-success-light text-success-text';
-        case AssetReturnStatus.REJECTED: return 'bg-danger-light text-danger-text';
-        default: return 'bg-gray-100 text-gray-800';
-    }
-};
-
-const SortableHeader: React.FC<{
-    children: React.ReactNode;
-    columnKey: keyof LoanRequest;
-    sortConfig: SortConfig<LoanRequest> | null;
-    requestSort: (key: keyof LoanRequest) => void;
-}> = ({ children, columnKey, sortConfig, requestSort }) => {
-    const isSorted = sortConfig?.key === columnKey;
-    const direction = isSorted ? sortConfig.direction : undefined;
-    const getSortIcon = () => {
-        if (!isSorted) return <SortIcon className="w-4 h-4 text-gray-400" />;
-        if (direction === 'ascending') return <SortAscIcon className="w-4 h-4 text-tm-accent" />;
-        return <SortDescIcon className="w-4 h-4 text-tm-accent" />;
-    };
-    return (
-        <th scope="col" className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">
-            <button onClick={() => requestSort(columnKey)} className="flex items-center space-x-1 group">
-                <span>{children}</span>
-                <span className="opacity-50 group-hover:opacity-100">{getSortIcon()}</span>
-            </button>
-        </th>
-    );
-};
-
-const LoanRequestTable: React.FC<{ 
-    requests: LoanRequest[], 
-    onDetailClick: (req: LoanRequest) => void, 
-    sortConfig: SortConfig<LoanRequest> | null, 
-    requestSort: (key: keyof LoanRequest) => void,
-    highlightedId: string | null;
-}> = ({ requests, onDetailClick, sortConfig, requestSort, highlightedId }) => (
-    <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-            <tr>
-                <SortableHeader columnKey="id" sortConfig={sortConfig} requestSort={requestSort}>ID / Tgl Request</SortableHeader>
-                <SortableHeader columnKey="requester" sortConfig={sortConfig} requestSort={requestSort}>Pemohon</SortableHeader>
-                <th scope="col" className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Detail Permintaan</th>
-                <SortableHeader columnKey="status" sortConfig={sortConfig} requestSort={requestSort}>Status</SortableHeader>
-                <th className="relative px-6 py-3"><span className="sr-only">Aksi</span></th>
-            </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-            {requests.length > 0 ? requests.map(req => (
-                <tr 
-                  key={req.id} 
-                  id={`request-row-${req.id}`}
-                  onClick={() => onDetailClick(req)} 
-                  className={`cursor-pointer transition-colors ${req.id === highlightedId ? 'bg-amber-100 animate-pulse-slow' : 'hover:bg-gray-50'}`}
-                >
-                    <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm font-semibold text-gray-900">{req.id}</div><div className="text-xs text-gray-500">{new Date(req.requestDate).toLocaleDateString('id-ID')}</div></td>
-                    <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm font-medium text-gray-900">{req.requester}</div><div className="text-xs text-gray-500">{req.division}</div></td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                        <div className="font-medium text-gray-800">{req.items.length} jenis item</div>
-                        <div className="text-xs truncate text-gray-500 max-w-[200px]" title={req.items.map(i => i.itemName).join(', ')}>
-                            {req.items.map(i => i.itemName).join(', ')}
-                        </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${getStatusClass(req.status)}`}>{req.status}</span></td>
-                    <td className="px-6 py-4 text-sm font-medium text-right"><button className="p-2 text-gray-500 rounded-full hover:bg-info-light hover:text-info-text"><EyeIcon className="w-5 h-5"/></button></td>
-                </tr>
-            )) : (
-                <tr><td colSpan={5} className="py-12 text-center text-gray-500"><InboxIcon className="w-12 h-12 mx-auto text-gray-300" /><p className="mt-2 font-semibold">Tidak ada data.</p></td></tr>
-            )}
-        </tbody>
-    </table>
-);
-
-const ReturnRequestTable: React.FC<{ 
-    returns: AssetReturn[], 
-    onDetailClick: (ret: AssetReturn) => void,
-}> = ({ returns, onDetailClick }) => (
-    <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-            <tr>
-                <th scope="col" className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">No. Dokumen / Tgl Kembali</th>
-                <th scope="col" className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Aset yang Dikembalikan</th>
-                <th scope="col" className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Pihak Terlibat</th>
-                <th scope="col" className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Kondisi</th>
-                <th scope="col" className="px-6 py-3 text-sm font-semibold tracking-wider text-left text-gray-500">Status</th>
-                <th className="relative px-6 py-3"><span className="sr-only">Aksi</span></th>
-            </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-            {returns.length > 0 ? returns.map(ret => (
-                <tr key={ret.id} onClick={() => onDetailClick(ret)} className="cursor-pointer hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm font-semibold text-gray-900">{ret.docNumber}</div><div className="text-xs text-gray-500">{new Date(ret.returnDate).toLocaleDateString('id-ID')}</div></td>
-                    <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm font-medium text-gray-900">{ret.assetName}</div><div className="text-xs text-gray-500 font-mono">{ret.assetId}</div></td>
-                    <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm font-medium text-gray-900">{ret.returnedBy}</div><div className="text-xs text-gray-500">ke {ret.receivedBy}</div></td>
-                    <td className="px-6 py-4 whitespace-nowrap"><span className="px-2.5 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">{ret.returnedCondition}</span></td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getReturnStatusClass(ret.status)}`}>
-                            {ret.status}
-                        </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm font-medium text-right"><button className="p-2 text-gray-500 rounded-full hover:bg-info-light hover:text-info-text"><EyeIcon className="w-5 h-5"/></button></td>
-                </tr>
-            )) : (
-                <tr><td colSpan={6} className="py-12 text-center text-gray-500"><InboxIcon className="w-12 h-12 mx-auto text-gray-300" /><p className="mt-2 font-semibold">Tidak ada data pengembalian.</p></td></tr>
-            )}
-        </tbody>
-    </table>
-);
 
 const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     const { currentUser: propUser, onShowPreview, onInitiateHandoverFromLoan, setIsGlobalScannerOpen, setScanContext, setFormScanCallback, initialFilters, setActivePage } = props;
@@ -214,9 +94,10 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     const [activeTab, setActiveTab] = useState<'loans' | 'returns'>('loans');
     const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false); // New Export Modal State
     
-    // Filter State
-    const initialFilterState = { status: '', division: '' };
+    // Filter State (Improved)
+    const initialFilterState = { status: '', division: '', startDate: null as Date | null, endDate: null as Date | null };
     const [filters, setFilters] = useState(initialFilterState);
     const [tempFilters, setTempFilters] = useState(filters);
     const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
@@ -257,8 +138,12 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     };
 
     const handleRemoveFilter = (key: keyof typeof filters) => {
-        setFilters((prev) => ({ ...prev, [key]: "" }));
-        setTempFilters((prev) => ({ ...prev, [key]: "" }));
+        setFilters((prev) => ({ ...prev, [key]: key.includes('Date') ? null : "" }));
+        setTempFilters((prev) => ({ ...prev, [key]: key.includes('Date') ? null : "" }));
+    };
+
+    const handleExport = (mappedData: any[], filename: string, extraHeader: any) => {
+        exportToCSV(mappedData, filename, extraHeader);
     };
 
     useEffect(() => {
@@ -309,6 +194,16 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
             .filter(req => {
                 if (filters.status && req.status !== filters.status) return false;
                 if (filters.division && req.division !== filters.division) return false;
+                if (filters.startDate) {
+                    const start = new Date(filters.startDate); start.setHours(0,0,0,0);
+                    const reqDate = new Date(req.requestDate); reqDate.setHours(0,0,0,0);
+                    if (reqDate < start) return false;
+                }
+                if (filters.endDate) {
+                    const end = new Date(filters.endDate); end.setHours(23,59,59,999);
+                    const reqDate = new Date(req.requestDate);
+                    if (reqDate > end) return false;
+                }
                 return true;
             });
     }, [loanRequests, currentUser, searchQuery, filters]);
@@ -324,32 +219,38 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     useEffect(() => { setCurrentPage(1); }, [searchQuery, filters, itemsPerPage, activeTab]);
 
     const handleCreateRequest = async (data: { loanItems: LoanItem[]; notes: string; }) => {
-        const userDivision = divisions.find(d => d.id === currentUser.divisionId)?.name || 'N/A';
-        const newRequest: LoanRequest = {
-            id: `LREQ-${(loanRequests.length + 1).toString().padStart(3, '0')}`,
-            requester: currentUser.name,
-            division: userDivision,
-            requestDate: new Date().toISOString(),
-            status: LoanRequestStatus.PENDING,
-            items: data.loanItems,
-            notes: data.notes,
-        };
-        
-        await addLoanRequest(newRequest);
-        
-        const adminRecipients = users.filter(u => u.role === 'Admin Logistik' || u.role === 'Super Admin');
-        adminRecipients.forEach(admin => {
-            addAppNotification({
-                recipientId: admin.id,
-                actorName: currentUser.name,
-                type: 'REQUEST_CREATED',
-                referenceId: newRequest.id,
-                message: `membuat request pinjam baru.`
+        // Wrap in Try-Catch for backend integration readiness
+        try {
+            const userDivision = divisions.find(d => d.id === currentUser.divisionId)?.name || 'N/A';
+            const newRequest: LoanRequest = {
+                id: `LREQ-${(loanRequests.length + 1).toString().padStart(3, '0')}`,
+                requester: currentUser.name,
+                division: userDivision,
+                requestDate: new Date().toISOString(),
+                status: LoanRequestStatus.PENDING,
+                items: data.loanItems,
+                notes: data.notes,
+            };
+            
+            await addLoanRequest(newRequest);
+            
+            const adminRecipients = users.filter(u => u.role === 'Admin Logistik' || u.role === 'Super Admin');
+            adminRecipients.forEach(admin => {
+                addAppNotification({
+                    recipientId: admin.id,
+                    actorName: currentUser.name,
+                    type: 'REQUEST_CREATED',
+                    referenceId: newRequest.id,
+                    message: `membuat request pinjam baru.`
+                });
             });
-        });
 
-        addNotificationUI('Permintaan peminjaman berhasil dibuat.', 'success');
-        setView('list');
+            addNotificationUI('Permintaan peminjaman berhasil dibuat.', 'success');
+            setView('list');
+        } catch (error) {
+            addNotificationUI('Gagal membuat permintaan. Silakan coba lagi.', 'error');
+            console.error(error);
+        }
     };
 
     const handleAssignAndApprove = async (request: LoanRequest, result: { itemStatuses: any, assignedAssetIds: any }) => {
@@ -461,10 +362,10 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
             
             addNotificationUI(isFullyReturned ? `Semua aset untuk ${request.id} telah dikembalikan. Handover #${newHandover.docNumber} dibuat.` : `Aset telah dikembalikan. Handover #${newHandover.docNumber} dibuat.`, 'success');
             
-            if (selectedRequest && selectedRequest.id === request.id) {
-                 // Force refresh selected
-                 setSelectedRequest(prev => prev ? ({...prev, status: isFullyReturned ? LoanRequestStatus.RETURNED : LoanRequestStatus.ON_LOAN, returnedAssetIds: newReturnedIds}) : null);
-            }
+            // UX Improvement: Switch to returns tab if fully returned, or just close modal
+            setSelectedRequest(null);
+            setView('list');
+            setActiveTab('returns'); // Auto-switch to returns tab to show the new record
             
         } catch(e) {
              addNotificationUI('Gagal memproses pengembalian.', 'error');
@@ -539,7 +440,17 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
         }
         return (
             <div className="p-4 sm:p-6 md:p-8">
-                <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6"><h1 className="text-3xl font-bold text-tm-dark">Request Peminjaman</h1><button onClick={() => setView('form')} className="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 rounded-lg shadow-sm bg-tm-primary hover:bg-tm-primary-hover">Buat Request Pinjam</button></div>
+                <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6"><h1 className="text-3xl font-bold text-tm-dark">Request Peminjaman</h1>
+                {/* Updated Header Buttons with Export */}
+                <div className="flex gap-2">
+                    {activeTab === 'loans' && (
+                        <button onClick={() => setIsExportModalOpen(true)} className="inline-flex items-center justify-center gap-2 px-4 py-2 border rounded-xl bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 shadow-sm transition-all">
+                            <ExportIcon className="w-4 h-4"/> Ekspor
+                        </button>
+                    )}
+                    <button onClick={() => setView('form')} className="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 rounded-lg shadow-sm bg-tm-primary hover:bg-tm-primary-hover">Buat Request Pinjam</button>
+                </div>
+                </div>
                 
                 <div className="mb-6 border-b border-gray-200">
                     <nav className="flex -mb-px space-x-6" aria-label="Tabs">
@@ -587,6 +498,25 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                                                         onChange={v => setTempFilters(f => ({ ...f, division: v }))} 
                                                     />
                                                 </div>
+                                                 <div>
+                                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Periode Pengajuan</label>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <DatePicker 
+                                                                id="filter-start-date" 
+                                                                selectedDate={tempFilters.startDate} 
+                                                                onDateChange={(date) => setTempFilters(f => ({ ...f, startDate: date }))} 
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <DatePicker 
+                                                                id="filter-end-date" 
+                                                                selectedDate={tempFilters.endDate} 
+                                                                onDateChange={(date) => setTempFilters(f => ({ ...f, endDate: date }))} 
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                             <div className="flex items-center justify-between p-4 bg-gray-50 border-t">
                                                 <button onClick={handleResetFilters} className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Reset</button>
@@ -611,6 +541,12 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                                 <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-100 rounded-full">
                                     Divisi: <span className="font-bold">{filters.division}</span>
                                     <button onClick={() => handleRemoveFilter('division')} className="p-0.5 ml-1 rounded-full hover:bg-orange-200 text-orange-500"><CloseIcon className="w-3 h-3" /></button>
+                                </span>
+                            )}
+                            {(filters.startDate || filters.endDate) && (
+                                <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-100 rounded-full">
+                                    Tanggal: <span className="font-bold">{filters.startDate ? new Date(filters.startDate).toLocaleDateString('id-ID') : '...'} - {filters.endDate ? new Date(filters.endDate).toLocaleDateString('id-ID') : '...'}</span>
+                                    <button onClick={() => { handleRemoveFilter('startDate'); handleRemoveFilter('endDate'); }} className="p-0.5 ml-1 rounded-full hover:bg-purple-200 text-purple-500"><CloseIcon className="w-3 h-3" /></button>
                                 </span>
                             )}
                             <button onClick={handleResetFilters} className="text-xs text-gray-500 hover:text-red-600 hover:underline px-2 py-1">Hapus Semua</button>
@@ -639,6 +575,16 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                 <div className="space-y-4"><p className="text-sm text-gray-600">Alasan penolakan untuk <strong className="font-semibold">{selectedRequest?.id}</strong>.</p><textarea value={rejectionReason} onChange={e => setRejectionReason(e.target.value)} rows={3} className="w-full text-sm border-gray-300 rounded-md focus:ring-tm-accent focus:border-tm-accent " placeholder="Contoh: Aset tidak tersedia..."></textarea></div>
                 <div className="flex justify-end gap-2 mt-6 pt-4 border-t"><button onClick={() => setIsRejectModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Batal</button><button onClick={handleRejection} disabled={isLoading || !rejectionReason.trim()} className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-danger rounded-lg shadow-sm hover:bg-red-700">Konfirmasi Tolak</button></div>
             </Modal>
+
+            {isExportModalOpen && (
+                <ExportLoanRequestModal 
+                    isOpen={true} 
+                    onClose={() => setIsExportModalOpen(false)} 
+                    currentUser={currentUser} 
+                    data={sortedRequests} 
+                    onConfirmExport={handleExport} 
+                />
+            )}
         </>
     );
 };

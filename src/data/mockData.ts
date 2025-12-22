@@ -280,8 +280,31 @@ export const mockAssets: Asset[] = [
     { id: 'CPE-003', name: 'ONT HG8245H', category: 'Perangkat Pelanggan (CPE)', type: 'ONT/ONU', brand: 'Huawei', serialNumber: 'HW-ONT-003', registrationDate: d(-20), recordedBy: 'Admin Logistik User', purchaseDate: d(-20), purchasePrice: 750000, vendor: 'Optik Prima', location: 'Gudang Inventori', currentUser: null, status: AssetStatus.IN_STORAGE, condition: AssetCondition.BRAND_NEW, activityLog: [], attachments: [], poNumber: 'REQ-INIT-02', invoiceNumber: 'INV-100', warrantyEndDate: d(340), notes: 'Stok baru' },
     { id: 'CPE-004', name: 'Router WR840N', category: 'Perangkat Pelanggan (CPE)', type: 'Router WiFi', brand: 'TP-Link', serialNumber: 'TP-WR-004', registrationDate: d(-15), recordedBy: 'Admin Logistik User', purchaseDate: d(-15), purchasePrice: 185000, vendor: 'Mega IT', location: 'Gudang Inventori', currentUser: null, status: AssetStatus.IN_STORAGE, condition: AssetCondition.BRAND_NEW, activityLog: [], attachments: [], poNumber: 'REQ-INIT-03', invoiceNumber: 'INV-101', warrantyEndDate: d(350), notes: null },
     
-    // TOOLS - Damaged & In Repair
-    { id: 'TOL-001', name: 'Fusion Splicer 90S', category: 'Alat Kerja Lapangan', type: 'Fusion Splicer', brand: 'Fujikura', serialNumber: 'FJ-SPL-001', registrationDate: d(-200), recordedBy: 'Admin Logistik User', purchaseDate: d(-200), purchasePrice: 65000000, vendor: 'Fiber Solusi', location: 'Gudang Teknisi', currentUser: null, status: AssetStatus.DAMAGED, condition: AssetCondition.MAJOR_DAMAGE, activityLog: [{ id: '1', action: 'Kerusakan Dilaporkan', user: 'Teknisi Lapangan A', timestamp: d(-2), details: 'Layar pecah terjatuh' }], attachments: [], poNumber: 'PO-TOOLS-01', invoiceNumber: null, warrantyEndDate: d(165), notes: 'Menunggu persetujuan perbaikan' },
+    // TOOLS - Sync with Loan Request LREQ-002
+    // FIX: Status synced to IN_USE and currentUser set to Staff User
+    { 
+        id: 'TOL-001', 
+        name: 'Fusion Splicer 90S', 
+        category: 'Alat Kerja Lapangan', 
+        type: 'Fusion Splicer', 
+        brand: 'Fujikura', 
+        serialNumber: 'FJ-SPL-001', 
+        registrationDate: d(-200), 
+        recordedBy: 'Admin Logistik User', 
+        purchaseDate: d(-200), 
+        purchasePrice: 65000000, 
+        vendor: 'Fiber Solusi', 
+        location: 'Digunakan oleh Staff User', // Sync Location
+        currentUser: 'Staff User',             // Sync User
+        status: AssetStatus.IN_USE,            // Sync Status
+        condition: AssetCondition.GOOD, 
+        activityLog: [], 
+        attachments: [], 
+        poNumber: 'PO-TOOLS-01', 
+        invoiceNumber: null, 
+        warrantyEndDate: d(165), 
+        notes: 'Sedang dipinjam (LREQ-002)' 
+    },
     
     // OFFICE - In Use
     { id: 'OFC-001', name: 'MacBook Air M1', category: 'Aset Kantor', type: 'Laptop', brand: 'Apple', serialNumber: 'FVFG-M1-001', registrationDate: d(-60), recordedBy: 'Admin Logistik User', purchaseDate: d(-60), purchasePrice: 14000000, vendor: 'iBox', location: 'Kantor Management', currentUser: 'Super Admin User', status: AssetStatus.IN_USE, condition: AssetCondition.GOOD, activityLog: [], attachments: [], poNumber: 'PO-OFC-01', invoiceNumber: null, warrantyEndDate: d(300), notes: 'Laptop Direktur' },
@@ -391,7 +414,7 @@ export const mockLoanRequests: LoanRequest[] = [
         ],
         approver: 'Admin Logistik User',
         approvalDate: d(-4),
-        assignedAssetIds: { 1: ['TOL-001'] }, // Note: In reality TOL-001 status should be IN_USE/LOANED. Adjusted in assets array above for simplicity or logic update.
+        assignedAssetIds: { 1: ['TOL-001'] }, 
         notes: 'Peminjaman alat kerja'
     },
     // 2. Overdue Loan (Testing Alert)
@@ -528,4 +551,4 @@ export const mockNotifications: Notification[] = [
 export const mockReturns: AssetReturn[] = []; // Kosong, nanti diisi via fitur
 
 // Mock History for Stock Item
-export const mockStockMovements = []; 
+export const mockStockMovements = [];

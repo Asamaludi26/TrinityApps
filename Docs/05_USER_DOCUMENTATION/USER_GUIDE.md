@@ -1,3 +1,4 @@
+
 # Panduan Pengguna Aplikasi Inventori Aset
 
 Selamat datang di Panduan Pengguna Aplikasi Inventori Aset PT. Triniti Media Indonesia. Dokumen ini bertujuan untuk membantu Anda memahami dan menggunakan fitur-fitur aplikasi secara efektif sesuai dengan peran Anda.
@@ -39,7 +40,7 @@ Halaman Dashboard memberikan gambaran umum kondisi inventori dan tugas-tugas yan
 
 ### 3.1. Untuk Semua Pengguna (Staff & Leader)
 
-#### Membuat Request Aset
+#### Membuat Request Aset (Pengadaan Baru)
 Ini adalah fitur untuk mengajukan permintaan pengadaan barang/aset baru.
 1.  Buka halaman **Pusat Aset > Request Aset**.
 2.  Klik tombol **"Buat Request Baru"**.
@@ -52,13 +53,23 @@ Ini adalah fitur untuk mengajukan permintaan pengadaan barang/aset baru.
 
 `[GIF singkat: Proses mengisi form request aset dan mengklik tombol 'Ajukan Permintaan']`
 
+#### Membuat Request Pinjam (Aset Gudang)
+Gunakan fitur ini jika Anda hanya ingin meminjam aset untuk sementara waktu.
+1.  Buka halaman **Pusat Aset > Request Aset**, lalu klik tab **Request Pinjam** di bagian atas (atau menu *Request Pinjam* di sidebar).
+2.  Klik **"Buat Request Pinjam"**.
+3.  Isi formulir:
+    -   Pilih aset yang tersedia di gudang.
+    -   Tentukan jumlah dan **Tanggal Pengembalian** (opsional/bisa "Belum Ditentukan").
+    -   Isi alasan peminjaman.
+4.  Klik **"Ajukan Permintaan Pinjam"**.
+
 #### Melakukan Follow-up
 Jika request Anda belum diproses, Anda dapat mengirim notifikasi pengingat kepada Admin.
 1.  Di halaman daftar **Request Aset**, cari request Anda.
 2.  Klik tombol **"Follow Up"** pada baris request tersebut. Admin akan menerima notifikasi. Fitur ini hanya dapat digunakan sekali dalam 24 jam per request.
 
 #### Melihat & Melaporkan Aset Pribadi
-1.  Buka halaman **Pusat Aset > Stok Aset**. Halaman ini akan secara otomatis menampilkan daftar aset yang terdaftar atas nama Anda.
+1.  Buka halaman **Pusat Aset > Stok Aset**. Halaman ini akan secara otomatis menampilkan daftar aset yang terdaftar atas nama Anda (baik aset tetap maupun pinjaman).
 2.  Untuk melaporkan kerusakan, temukan aset yang rusak, lalu klik tombol **"Laporkan"** (ikon kunci pas).
 3.  Isi formulir laporan kerusakan dengan detail masalah dan lampirkan foto jika perlu.
 4.  Kirim laporan. Tim Admin akan menerima notifikasi dan menindaklanjuti.
@@ -76,6 +87,24 @@ Jika request Anda belum diproses, Anda dapat mengirim notifikasi pengingat kepad
 
 `[Screenshot: Modal detail request dengan tombol 'Setujui' dan 'Tolak' disorot]`
 
+#### Mengelola Peminjaman & Pengembalian (Utama untuk Admin Logistik)
+Fitur ini digunakan untuk memproses peminjaman aset dari stok gudang.
+1.  **Persetujuan Pinjam**:
+    -   Buka halaman **Pusat Aset > Request Aset**, pilih tab **Request Peminjaman**.
+    -   Buka request yang statusnya `Menunggu Persetujuan`.
+    -   Klik **"Tinjau & Tetapkan"**.
+    -   Di panel ini, Anda dapat menyetujui jumlah item dan **memilih Aset ID spesifik** dari stok yang akan diserahkan.
+    -   Klik **"Simpan & Terapkan"**. Status berubah menjadi `Disetujui`.
+2.  **Handover Pinjaman**:
+    -   Setelah disetujui, klik **"Buat Dokumen Handover"** untuk mencetak bukti serah terima resmi.
+    -   Status aset akan otomatis berubah menjadi `Digunakan (Dipinjam)` dan stok gudang berkurang.
+3.  **Proses Pengembalian (Return)**:
+    -   Saat staf mengembalikan barang, buka detail request peminjaman tersebut.
+    -   Klik **"Konfirmasi Pengembalian"**.
+    -   Pilih aset mana saja yang dikembalikan (bisa parsial).
+    -   Isi kondisi aset saat diterima kembali.
+    -   Klik **"Konfirmasi"**. Aset akan kembali ke stok dengan status `Di Gudang`.
+
 #### Mencatat Aset Baru (Utama untuk Admin Logistik)
 Fitur ini digunakan untuk mendaftarkan barang yang telah tiba ke dalam sistem sebagai aset.
 1.  **Dari Request**: Di halaman **Request Aset**, cari request yang statusnya **"Telah Tiba"**. Klik tombol **"Catat Aset"**.
@@ -92,7 +121,7 @@ Buka **Pusat Aset > Stok Aset** untuk melihat ringkasan semua tipe aset yang ada
 -   Mulai permintaan baru langsung dari item yang stoknya habis.
 
 #### Mengelola Handover (Serah Terima Internal) (Utama untuk Admin Logistik)
-Fitur ini mencatat perpindahan aset dari satu staf/divisi ke staf/divisi lain.
+Fitur ini mencatat perpindahan aset dari satu staf/divisi ke staf/divisi lain (bukan peminjaman sementara).
 1.  Buka halaman **Pusat Aset > Handover Aset**.
 2.  Klik **"Buat Handover Baru"**.
 3.  Isi formulir Berita Acara: pilih aset dari gudang dan pihak yang terlibat.
