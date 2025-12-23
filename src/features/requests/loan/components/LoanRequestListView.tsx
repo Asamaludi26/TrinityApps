@@ -12,7 +12,7 @@ import DatePicker from '../../../../components/ui/DatePicker';
 import { LoanRequestTable } from './LoanRequestTable';
 import { ReturnRequestTable } from './ReturnRequestTable';
 import { ExportLoanRequestModal } from './ExportLoanRequestModal';
-import { ExportReturnRequestModal } from './ExportReturnRequestModal'; // IMPORTED NEW MODAL
+import { ExportReturnRequestModal } from './ExportReturnRequestModal';
 import { exportToCSV } from '../../../../utils/csvExporter';
 
 interface LoanRequestListViewProps {
@@ -111,8 +111,6 @@ export const LoanRequestListView: React.FC<LoanRequestListViewProps> = ({
     // Filter Logic for Returns
     const filteredReturns = useMemo(() => {
         let tempReturns = [...returns];
-        // Note: Returns don't strictly have a 'requester' field on the top level object for simple filtering 
-        // without joining to LoanRequest, but we can filter by 'returnedBy'.
         if (!['Admin Logistik', 'Super Admin'].includes(currentUser.role)) {
             tempReturns = tempReturns.filter(ret => ret.returnedBy === currentUser.name);
         }
@@ -124,21 +122,24 @@ export const LoanRequestListView: React.FC<LoanRequestListViewProps> = ({
                     ret.returnedBy.toLowerCase().includes(searchLower) ||
                     ret.loanDocNumber.toLowerCase().includes(searchLower);
         });
-        // Note: Advanced filters for returns (Date, Status) aren't implemented in the UI panel yet for Returns specifically,
-        // so we only apply search query here for now to keep it consistent with the UI.
     }, [returns, currentUser, searchQuery]);
 
     // Sorting & Pagination
-    const { items: sortedRequests, requestSort, sortConfig } = useSortableData(filteredRequests, { key: 'requestDate', direction: 'descending' });
+    
+    // 1. Hook for Loans
+    const { items: sortedRequests, requestSort: requestLoanSort, sortConfig: loanSortConfig } = useSortableData(filteredRequests, { key: 'requestDate', direction: 'descending' });
+    
+    // 2. Hook for Returns (ADDED)
+    const { items: sortedReturns, requestSort: requestReturnSort, sortConfig: returnSortConfig } = useSortableData(filteredReturns, { key: 'returnDate', direction: 'descending' });
     
     // Pagination Slicing
-    const totalItems = activeTab === 'loans' ? sortedRequests.length : filteredReturns.length;
+    const totalItems = activeTab === 'loans' ? sortedRequests.length : sortedReturns.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
-    const paginatedRequests = sortedRequests.slice(startIndex, startIndex + itemsPerPage);
     
-    // Returns Pagination
-    const paginatedReturns = filteredReturns.slice(startIndex, startIndex + itemsPerPage);
+    // Slice based on active tab
+    const paginatedRequests = sortedRequests.slice(startIndex, startIndex + itemsPerPage);
+    const paginatedReturns = sortedReturns.slice(startIndex, startIndex + itemsPerPage);
 
     return (
         <div className="p-4 sm:p-6 md:p-8">
@@ -248,9 +249,20 @@ export const LoanRequestListView: React.FC<LoanRequestListViewProps> = ({
             <div className="overflow-hidden bg-white border border-gray-200/80 rounded-xl shadow-md">
                 <div className="overflow-x-auto custom-scrollbar">
                     {activeTab === 'loans' ? (
-                        <LoanRequestTable requests={paginatedRequests} onDetailClick={onDetailClick} sortConfig={sortConfig} requestSort={requestSort} highlightedId={highlightedId} />
+                        <LoanRequestTable 
+                            requests={paginatedRequests} 
+                            onDetailClick={onDetailClick} 
+                            sortConfig={loanSortConfig} 
+                            requestSort={requestLoanSort} 
+                            highlightedId={highlightedId} 
+                        />
                     ) : (
-                        <ReturnRequestTable returns={paginatedReturns} onDetailClick={onReturnDetailClick} />
+                        <ReturnRequestTable 
+                            returns={paginatedReturns} 
+                            onDetailClick={onReturnDetailClick}
+                            sortConfig={returnSortConfig}
+                            requestSort={requestReturnSort} 
+                        />
                     )}
                 </div>
                 <PaginationControls currentPage={currentPage} totalPages={totalPages} totalItems={totalItems} itemsPerPage={itemsPerPage} onPageChange={setCurrentPage} onItemsPerPageChange={setItemsPerPage} startIndex={startIndex} endIndex={startIndex + (activeTab === 'loans' ? paginatedRequests.length : paginatedReturns.length)} />
@@ -271,7 +283,7 @@ export const LoanRequestListView: React.FC<LoanRequestListViewProps> = ({
                     isOpen={true} 
                     onClose={() => setIsExportModalOpen(false)} 
                     currentUser={currentUser} 
-                    data={filteredReturns} 
+                    data={sortedReturns} 
                     onConfirmExport={(data, filename, header) => exportToCSV(data, filename, header)} 
                 />
             )}

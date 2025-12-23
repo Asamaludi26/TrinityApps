@@ -31,6 +31,9 @@ interface RequestState {
   addLoanRequest: (request: LoanRequest) => Promise<void>;
   updateLoanRequest: (id: string, data: Partial<LoanRequest>) => Promise<void>;
   deleteLoanRequest: (id: string) => Promise<void>;
+  
+  // NEW: Transactional Action for Approval
+  approveLoanRequest: (id: string, payload: { approver: string, approvalDate: string, assignedAssetIds: any, itemStatuses: any }) => Promise<void>;
 
   // Actions - Returns
   addReturn: (returnData: AssetReturn) => Promise<void>;
@@ -39,13 +42,8 @@ interface RequestState {
 
 // Helper untuk menampilkan simulasi notifikasi WA via MODAL
 const triggerWAModal = (payload: WAMessagePayload) => {
-    // 1. Tampilkan Toast kecil sebagai feedback instan
     useNotificationStore.getState().addToast('Pesan WhatsApp Dibuat', 'success', { duration: 2000 });
-    
-    // 2. Buka Modal untuk menampilkan isi pesan
     useUIStore.getState().openWAModal(payload);
-    
-    // 3. Log console tetap ada untuk debugging
     console.log(`%c [WA SIMULATION - ${payload.groupName}] \n${payload.message}`, 'background: #25D366; color: white; padding: 4px; border-radius: 4px;');
 };
 
@@ -191,16 +189,13 @@ export const useRequestStore = create<RequestState>((set, get) => ({
         const users = useMasterDataStore.getState().users;
         const recipient = users.find(u => u.name === originalRequest.requester);
         
-        // 1. WA: REJECTED
         if (data.status === ItemStatus.REJECTED) {
              const rejector = data.rejectedBy || 'Admin';
-             // FIX: Gunakan updatedReq (data terbaru) agar status yang dikirim ke WA adalah 'Ditolak', bukan 'Pending'
              const waPayload = WhatsAppService.generateRejectionPayload(updatedReq, rejector, data.rejectionReason || '-');
              await sendWhatsAppSimulation(waPayload);
              triggerWAModal(waPayload);
         }
 
-        // 2. WA: LOGISTIC APPROVED
         if (data.status === ItemStatus.LOGISTIC_APPROVED) {
             const approver = data.logisticApprover || 'Admin Logistik';
             const waPayload = WhatsAppService.generateLogisticApprovalPayload(updatedReq, approver);
@@ -208,15 +203,13 @@ export const useRequestStore = create<RequestState>((set, get) => ({
             triggerWAModal(waPayload);
         }
 
-        // 3. WA: SUBMIT TO CEO (AWAITING CEO)
         if (data.status === ItemStatus.AWAITING_CEO_APPROVAL) {
-             const approver = data.logisticApprover || 'Admin Purchase'; // Biasanya Purchase yang submit
+             const approver = data.logisticApprover || 'Admin Purchase';
              const waPayload = WhatsAppService.generateSubmitToCeoPayload(updatedReq, approver);
              await sendWhatsAppSimulation(waPayload);
              triggerWAModal(waPayload);
         }
 
-        // 4. WA: FINAL APPROVED
         if (data.status === ItemStatus.APPROVED) {
              const approver = data.finalApprover || 'CEO';
              const waPayload = WhatsAppService.generateFinalApprovalPayload(originalRequest, approver);
@@ -224,21 +217,18 @@ export const useRequestStore = create<RequestState>((set, get) => ({
              triggerWAModal(waPayload);
         }
 
-        // 5. WA: PROCUREMENT PROGRESS (Purchasing & In Delivery)
         if (data.status === ItemStatus.PURCHASING || data.status === ItemStatus.IN_DELIVERY) {
              const waPayload = WhatsAppService.generateProcurementUpdatePayload(updatedReq, data.status);
              await sendWhatsAppSimulation(waPayload);
              triggerWAModal(waPayload);
         }
 
-        // 6. WA: ARRIVED (Barang Tiba)
         if (data.status === ItemStatus.ARRIVED) {
-             const waPayload = WhatsAppService.generateItemsArrivedPayload(updatedReq); // Use updatedReq to catch arrivalDate
+             const waPayload = WhatsAppService.generateItemsArrivedPayload(updatedReq);
              await sendWhatsAppSimulation(waPayload);
              triggerWAModal(waPayload);
         }
 
-        // Existing Notification Logic Kept
         if (recipient) {
             const isApproval = [ItemStatus.LOGISTIC_APPROVED, ItemStatus.APPROVED, ItemStatus.AWAITING_CEO_APPROVAL].includes(data.status);
             const isRejection = data.status === ItemStatus.REJECTED;
@@ -296,7 +286,6 @@ export const useRequestStore = create<RequestState>((set, get) => ({
     const newCount = currentCount + count;
     updatedRequest.partiallyRegisteredItems[itemId] = newCount;
 
-    // Cek apakah semua item sudah terdaftar penuh
     const allItemsRegistered = updatedRequest.items.every((item) => {
       const status = updatedRequest.itemStatuses?.[item.id];
       if (status?.status === 'stock_allocated') return true;
@@ -353,6 +342,39 @@ export const useRequestStore = create<RequestState>((set, get) => ({
             });
         }
     }
+  },
+  
+  // NEW: TRANSACTIONAL APPROVAL ACTION
+  approveLoanRequest: async (id, payload) => {
+     try {
+         // Call the specific transaction endpoint
+         const updatedRequest = await api.approveLoanTransaction(id, payload);
+         
+         // Sync Local State
+         const currentLoans = get().loanRequests;
+         const updatedLoans = currentLoans.map(r => r.id === id ? updatedRequest : r);
+         set({ loanRequests: updatedLoans });
+
+         // Refresh Assets Store (karena aset juga diupdate di backend)
+         await useAssetStore.getState().fetchAssets();
+
+         // Send Notification Logic (sama seperti updateLoanRequest)
+         const users = useMasterDataStore.getState().users;
+         const recipient = users.find(u => u.name === updatedRequest.requester);
+         if (recipient) {
+             useNotificationStore.getState().addSystemNotification({
+                 recipientId: recipient.id,
+                 actorName: payload.approver,
+                 type: 'REQUEST_APPROVED',
+                 referenceId: id,
+                 message: `menyetujui request pinjam Anda. Aset telah dialokasikan.`
+             });
+         }
+         
+     } catch (error) {
+         console.error("Transactional approval failed", error);
+         throw error; // Re-throw to be caught by component
+     }
   },
   
   deleteLoanRequest: async (id) => {

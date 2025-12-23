@@ -548,7 +548,55 @@ export const mockNotifications: Notification[] = [
     }
 ];
 
-export const mockReturns: AssetReturn[] = []; // Kosong, nanti diisi via fitur
+// MOCK RETURNS (Request Pengembalian)
+export const mockReturns: AssetReturn[] = [
+    {
+        id: 'RET-001',
+        docNumber: 'RET-231025-001',
+        returnDate: d(-1), // Yesterday
+        loanRequestId: 'LREQ-002',
+        loanDocNumber: 'LREQ-002',
+        assetId: 'TOL-001',
+        assetName: 'Fusion Splicer 90S',
+        returnedBy: 'Staff User',
+        receivedBy: 'Admin Logistik User',
+        returnedCondition: AssetCondition.GOOD,
+        notes: 'Pekerjaan selesai lebih cepat.',
+        status: AssetReturnStatus.PENDING_APPROVAL
+    },
+    {
+        id: 'RET-002',
+        docNumber: 'RET-231020-001',
+        returnDate: d(-5),
+        loanRequestId: 'LREQ-001',
+        loanDocNumber: 'LREQ-001',
+        assetId: 'OPM-003', // Virtual ID
+        assetName: 'Optical Power Meter (OPM)',
+        returnedBy: 'Teknisi Lapangan A',
+        receivedBy: 'Admin Logistik User',
+        returnedCondition: AssetCondition.GOOD,
+        status: AssetReturnStatus.APPROVED,
+        approvedBy: 'Admin Logistik User',
+        approvalDate: d(-4)
+    },
+    {
+        id: 'RET-003',
+        docNumber: 'RET-231015-001',
+        returnDate: d(-10),
+        loanRequestId: 'LREQ-002',
+        loanDocNumber: 'LREQ-002',
+        assetId: 'CLEAVER-01', // Virtual ID
+        assetName: 'Fiber Cleaver',
+        returnedBy: 'Staff User',
+        receivedBy: 'Admin Logistik User',
+        returnedCondition: AssetCondition.MINOR_DAMAGE,
+        notes: 'Ada baret halus di body.',
+        status: AssetReturnStatus.REJECTED,
+        rejectedBy: 'Admin Logistik User',
+        rejectionDate: d(-9),
+        rejectionReason: 'Kondisi dilaporkan rusak ringan, namun fisik retak parah. Perlu investigasi.'
+    }
+];
 
 // Mock History for Stock Item
 export const mockStockMovements = [];

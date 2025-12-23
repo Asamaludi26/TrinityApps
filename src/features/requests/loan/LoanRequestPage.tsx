@@ -8,7 +8,7 @@ import { generateDocumentNumber } from '../../../utils/documentNumberGenerator';
 // Components
 import { LoanRequestForm } from './components/LoanRequestForm';
 import LoanRequestDetailPage from './LoanRequestDetailPage';
-import { LoanRequestListView } from './components/LoanRequestListView'; // IMPORTED NEW COMPONENT
+import { LoanRequestListView } from './components/LoanRequestListView';
 
 // Stores
 import { useRequestStore } from '../../../stores/useRequestStore';
@@ -51,6 +51,7 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     const returns = useRequestStore((state) => state.returns);
     const addLoanRequest = useRequestStore((state) => state.addLoanRequest);
     const updateLoanRequest = useRequestStore((state) => state.updateLoanRequest);
+    const approveLoanRequest = useRequestStore((state) => state.approveLoanRequest); // NEW ACTION
     const fetchRequests = useRequestStore((state) => state.fetchRequests);
 
     const assets = useAssetStore((state) => state.assets);
@@ -165,48 +166,29 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     const handleAssignAndApprove = async (request: LoanRequest, result: { itemStatuses: any, assignedAssetIds: any }) => {
         setIsLoading(true);
         try {
-            const { itemStatuses, assignedAssetIds } = result;
-            const allStatuses = Object.values(itemStatuses).map((s: any) => s.status);
-            const allRejected = allStatuses.every(s => s === 'rejected');
-            const newStatus = allRejected ? LoanRequestStatus.REJECTED : LoanRequestStatus.APPROVED;
-            
-            const updatedRequest: Partial<LoanRequest> = {
-                status: newStatus,
+            // REFACTOR: Use the atomic transaction action
+            await approveLoanRequest(request.id, {
                 approver: currentUser.name,
                 approvalDate: new Date().toISOString(),
-                assignedAssetIds,
-                itemStatuses,
-                rejectionReason: allRejected ? "Semua item ditolak oleh Admin." : undefined
-            };
-
-            await updateLoanRequest(request.id, updatedRequest);
-
-            // FIX: Prevent double booking by immediately setting assets to IN_USE/BOOKED
-            if (!allRejected && assignedAssetIds) {
-                const allAssignedIds = Object.values(assignedAssetIds).flat() as string[];
-                // Update assets in parallel
-                const assetUpdatePromises = allAssignedIds.map(assetId => 
-                    updateAsset(assetId, { 
-                        status: AssetStatus.IN_USE,
-                        currentUser: request.requester,
-                        location: `Dipinjam oleh ${request.requester}`
-                    })
-                );
-                await Promise.all(assetUpdatePromises);
-                await fetchAssets(); // Refresh local asset state
-            }
+                assignedAssetIds: result.assignedAssetIds,
+                itemStatuses: result.itemStatuses
+            });
             
-            // Reflect update in local view if needed
-            const fullUpdated = { ...request, ...updatedRequest };
-            setSelectedRequest(fullUpdated as LoanRequest);
+            // Re-fetch to get latest state from store (which was updated by action)
+            const updatedReq = useRequestStore.getState().loanRequests.find(r => r.id === request.id);
+            if (updatedReq) setSelectedRequest(updatedReq);
+            
+            const allStatuses = Object.values(result.itemStatuses).map((s: any) => s.status);
+            const allRejected = allStatuses.every(s => s === 'rejected');
             
             if (allRejected) {
                 addNotificationUI(`Request pinjam ${request.id} telah ditolak sepenuhnya.`, 'warning');
             } else {
                 addNotificationUI(`Request pinjam ${request.id} disetujui. Aset telah dialokasikan.`, 'success');
             }
-        } catch (e) {
-            addNotificationUI('Gagal memperbarui request.', 'error');
+        } catch (e: any) {
+            console.error(e);
+            addNotificationUI(e.message || 'Gagal memperbarui request.', 'error');
         } finally {
              setIsLoading(false);
         }
@@ -240,7 +222,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
             const newReturnedIds = [...new Set([...currentReturnedIds, ...assetIds])];
 
             const allAssignedIds = Object.values(request.assignedAssetIds || {}).flat();
-            // Check full return based on ALL assigned ids against merged returned IDs
             const isFullyReturned = allAssignedIds.every(id => newReturnedIds.includes(id));
 
             const now = new Date();
@@ -255,11 +236,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                 assetId: asset.id,
                 itemName: asset.name,
                 itemTypeBrand: asset.brand,
-                // Preservation Logic:
-                // Jika status aset saat ini 'AWAITING_RETURN', kemungkinan besar user sudah mengisi form pengembalian
-                // dengan kondisi tertentu. Di backend nanti, kita harus mengambil kondisi tersebut dari dokumen AssetReturn terkait.
-                // Untuk Frontend Mock: Kita cek apakah kondisi sudah berubah (misal user set ke rusak di form pengembalian).
-                // Jika masih IN_USE, default ke kondisi lama.
                 conditionNotes: asset.condition || 'Dikembalikan dari Peminjaman',
                 quantity: 1,
                 checked: true,
@@ -270,8 +246,8 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                 id: handoverId,
                 docNumber: handoverDocNumber,
                 handoverDate: handoverDate.toISOString().split('T')[0],
-                menyerahkan: request.requester, // Peminjam mengembalikan
-                penerima: currentUser.name, // Admin menerima
+                menyerahkan: request.requester, 
+                penerima: currentUser.name, 
                 mengetahui: 'N/A', 
                 woRoIntNumber: request.id,
                 items: handoverItems,
@@ -281,7 +257,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
             await addHandover(newHandover);
 
             await updateLoanRequest(request.id, { 
-                // If fully returned, status is RETURNED. If partial, revert to ON_LOAN (active)
                 status: isFullyReturned ? LoanRequestStatus.RETURNED : LoanRequestStatus.ON_LOAN, 
                 actualReturnDate: isFullyReturned ? now.toISOString() : request.actualReturnDate,
                 returnedAssetIds: newReturnedIds
@@ -289,7 +264,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
 
             // Update Asset Statuses (Optimized with Promise.all)
             const updatePromises = assetIds.map(assetId => {
-                // Fetch latest state to be sure
                 const currentAsset = assets.find(a => a.id === assetId);
                 const targetStatus = (currentAsset?.status === AssetStatus.DAMAGED) 
                     ? AssetStatus.DAMAGED 
@@ -312,8 +286,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
             
             setSelectedRequest(null);
             setView('list');
-            // Note: We don't auto-switch tabs here to avoid prop drilling complex state to ListView, 
-            // but the user will see the updated list.
             
         } catch(e) {
              addNotificationUI('Gagal memproses pengembalian.', 'error');
@@ -329,9 +301,8 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
             // 1. Update Loan Request Status
             await updateLoanRequest(request.id, { status: LoanRequestStatus.AWAITING_RETURN });
             
-            // 2. CRITICAL: Update ALL assigned assets status to AWAITING_RETURN
+            // 2. Update ALL assigned assets status to AWAITING_RETURN
             const allAssignedIds = Object.values(request.assignedAssetIds || {}).flat();
-            // Filter out already returned assets to avoid re-updating them
             const assetsToUpdate = allAssignedIds.filter(id => !(request.returnedAssetIds || []).includes(id));
 
             await Promise.all(assetsToUpdate.map(assetId => 
@@ -405,7 +376,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                  />;
         }
         
-        // --- NEW: CLEAN LIST VIEW RENDER ---
         return (
             <LoanRequestListView 
                 currentUser={currentUser}
@@ -429,8 +399,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                 <div className="space-y-4"><p className="text-sm text-gray-600">Alasan penolakan untuk <strong className="font-semibold">{selectedRequest?.id}</strong>.</p><textarea value={rejectionReason} onChange={e => setRejectionReason(e.target.value)} rows={3} className="w-full text-sm border-gray-300 rounded-md focus:ring-tm-accent focus:border-tm-accent " placeholder="Contoh: Aset tidak tersedia..."></textarea></div>
                 <div className="flex justify-end gap-2 mt-6 pt-4 border-t"><button onClick={() => setIsRejectModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Batal</button><button onClick={handleRejection} disabled={isLoading || !rejectionReason.trim()} className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-danger rounded-lg shadow-sm hover:bg-red-700">Konfirmasi Tolak</button></div>
             </Modal>
-
-            {/* Note: Export Modal is now handled inside LoanRequestListView for cleaner code */}
         </>
     );
 };

@@ -1,5 +1,4 @@
 
-
 import React, { useState, useRef, useMemo } from 'react';
 import { LoanRequest, User, Asset, Division, PreviewData, LoanRequestStatus, AssetCategory, ParsedScanResult, Page } from '../../../types';
 import { DetailPageLayout } from '../../../components/layout/DetailPageLayout';
@@ -17,6 +16,9 @@ import { useNotification } from '../../../providers/NotificationProvider';
 import { AssignmentPanel } from './components/AssignmentPanel';
 import { LoanActionSidebar } from './components/LoanActionSidebar';
 import { ReturnSelectionModal } from './components/ReturnSelectionModal';
+
+// Store Import (Required for re-fetching data)
+import { useAssetStore } from '../../../stores/useAssetStore';
 
 interface LoanRequestDetailPageProps {
     loanRequest: LoanRequest;
@@ -40,16 +42,20 @@ interface LoanRequestDetailPageProps {
 }
 
 const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
-    const { loanRequest, currentUser, assets, users, divisions, assetCategories, onAssignAndApprove, setIsGlobalScannerOpen, setScanContext, setFormScanCallback, onConfirmReturn, setActivePage, onShowPreview } = props;
+    const { loanRequest, currentUser, assets, users, divisions, assetCategories, onAssignAndApprove, setIsGlobalScannerOpen, setScanContext, setFormScanCallback, onConfirmReturn, onInitiateReturn, setActivePage, onShowPreview } = props;
     const [isActionSidebarExpanded, setIsActionSidebarExpanded] = useState(true);
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
     
     // NEW STATE for Inline Panel Visibility
     const [isAssignmentPanelOpen, setIsAssignmentPanelOpen] = useState(false);
+    const [isFetchingAssets, setIsFetchingAssets] = useState(false);
 
     const printRef = useRef<HTMLDivElement>(null);
     const [isDownloading, setIsDownloading] = useState(false);
     const addNotification = useNotification();
+    
+    // Store Actions
+    const fetchAssets = useAssetStore(state => state.fetchAssets);
     
     // Only fetch necessary data for the panel
     const availableAssetsForLoan = useMemo(() => assets.filter(a => a.status === 'Di Gudang'), [assets]);
@@ -86,12 +92,23 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
             });
     };
     
-    const handleOpenAssignment = () => {
-        setIsAssignmentPanelOpen(true);
-        // Smooth scroll to panel
-        setTimeout(() => {
-            panelRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
+    const handleOpenAssignment = async () => {
+        // PREVENTION: Race Condition Check
+        // Sebelum membuka panel, kita paksa ambil data terbaru dari server (mock/real)
+        // untuk memastikan Admin tidak melihat aset yang sebenarnya sudah diambil orang lain.
+        setIsFetchingAssets(true);
+        try {
+            await fetchAssets();
+            setIsAssignmentPanelOpen(true);
+            // Smooth scroll to panel
+            setTimeout(() => {
+                panelRef.current?.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+        } catch (error) {
+            addNotification("Gagal menyinkronkan data aset terbaru.", "error");
+        } finally {
+            setIsFetchingAssets(false);
+        }
     };
 
     const handleAssignmentConfirm = (result: { itemStatuses: any, assignedAssetIds: any }) => {
@@ -118,6 +135,7 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
             aside={
                 <LoanActionSidebar 
                     {...props} 
+                    isLoading={props.isLoading || isFetchingAssets}
                     isExpanded={isActionSidebarExpanded} 
                     onToggleVisibility={() => setIsActionSidebarExpanded(p => !p)} 
                     onOpenAssignment={handleOpenAssignment}
@@ -283,8 +301,9 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                 onConfirm={(assetIds) => {
                     // Logic branching based on role
                     if (currentUser.role === 'Staff' || currentUser.role === 'Leader') {
-                        // Requester Flow: Navigate to Return Form with preselected assets
-                        setActivePage('return-form', { loanId: loanRequest.id, assetIds: assetIds });
+                        // Requester Flow: Immediately initiate return process (Status: AWAITING_RETURN)
+                        // This keeps the user on the current Detail Page instead of navigating to a form.
+                        onInitiateReturn(loanRequest);
                     } else {
                         // Admin Flow: Direct confirm/complete return
                         onConfirmReturn(loanRequest, assetIds);
