@@ -19,7 +19,7 @@ graph TD
     subgraph "Infrastruktur Fisik (Proxmox Host)"
         Firewall[Proxmox Firewall / Mikrotik]
         
-        subgraph "Virtual Machine: AssetServer (192.168.x.x)"
+        subgraph "Virtual Machine: AssetServer (IP: 192.168.x.x)"
             Nginx[Nginx Reverse Proxy :80/:443]
             
             subgraph "Docker Network (Internal Bridge: 172.18.x.x)"
@@ -41,7 +41,7 @@ graph TD
 ```
 
 **Poin Keamanan Kritis:**
-*   Database (`:5432`) dan Backend API (`:3001`) **TIDAK** diekspos ke jaringan host atau publik. Mereka hanya bisa saling bicara di dalam Docker Network yang terisolasi.
+*   Database (`:5432`) dan Backend API (`:3001`) **TIDAK** diekspos ke jaringan host atau publik secara langsung. Mereka hanya bisa saling bicara di dalam Docker Network yang terisolasi.
 *   Hanya Nginx yang membuka port 80/443 ke dunia luar.
 *   Akses SSH menggunakan port custom (misal 9022) dan wajib menggunakan SSH Key (Disable Password Auth).
 
@@ -49,10 +49,10 @@ graph TD
 
 ## 2. Operations Runbook (Panduan Operasional)
 
-Panduan langkah demi langkah untuk tugas maintenance rutin.
+Panduan langkah demi langkah untuk tugas maintenance rutin dan troubleshooting.
 
 ### 2.1. Integrasi QEMU Guest Agent (Wajib untuk Proxmox)
-Agar Proxmox bisa memonitor penggunaan RAM/CPU VM secara akurat dan melakukan *graceful shutdown* (misal saat mati lampu dan UPS memicu shutdown), QEMU Agent harus aktif.
+Agar Proxmox bisa memonitor penggunaan RAM/CPU VM secara akurat dan melakukan *graceful shutdown* (misal saat mati lampu dan UPS memicu shutdown), QEMU Agent harus aktif. Tanpa ini, snapshot backup mungkin tidak konsisten (file system corruption).
 
 1.  **Di dalam VM Ubuntu**:
     ```bash
@@ -75,6 +75,7 @@ Docker sering meninggalkan image dan volume yang tidak terpakai ("dangling"), ya
 docker system prune -f
 
 # 2. Hapus image lama yang tidak digunakan oleh container aktif
+# Hati-hati: pastikan image production tidak terhapus jika tidak ada tag
 docker image prune -a -f --filter "until=24h"
 
 # 3. Cek penggunaan disk
@@ -85,19 +86,23 @@ df -h
 Jika terjadi korupsi data dan perlu restore dari file backup `.sql.gz`.
 
 **Langkah Restore:**
-1.  Stop aplikasi backend agar tidak ada data baru masuk.
+1.  Stop aplikasi backend agar tidak ada data baru masuk selama proses restore.
     ```bash
     docker compose stop api
     ```
 2.  Copy file backup ke dalam container database.
     ```bash
+    # Unzip dulu jika .gz
     gunzip backup_file.sql.gz
+    # Copy ke container
     docker cp backup_file.sql triniti_asset_db:/tmp/restore.sql
     ```
 3.  Eksekusi restore di dalam container.
     ```bash
+    # Masuk ke container dan jalankan psql
     docker exec -it triniti_asset_db psql -U triniti_admin -d triniti_asset -f /tmp/restore.sql
     ```
+    *Catatan: Pastikan nama user (-U) dan database (-d) sesuai dengan .env.*
 4.  Start kembali aplikasi.
     ```bash
     docker compose start api

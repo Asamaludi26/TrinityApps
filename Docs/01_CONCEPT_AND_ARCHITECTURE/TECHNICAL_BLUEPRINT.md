@@ -65,7 +65,7 @@ Transisi dari prototipe ke produksi membutuhkan penggantian lapisan data tanpa m
 Saat ini, `src/services/api.ts` menangani logika mock.
 
 **Langkah 1: Interface Pattern**
-Buat interface standar untuk semua panggilan API.
+Buat interface standar untuk semua panggilan API untuk memastikan kontrak data tidak berubah.
 ```typescript
 // src/services/interfaces.ts
 export interface IAssetService {
@@ -84,7 +84,7 @@ const client = axios.create({ baseURL: import.meta.env.VITE_API_URL });
 export const RealAssetService = {
     getAssets: async () => {
         const { data } = await client.get('/assets');
-        return data.data; // Unrap response standar
+        return data.data; // Unrap response standar (misal { data: [], meta: {} })
     }
 }
 ```
@@ -93,20 +93,22 @@ export const RealAssetService = {
 Di `src/services/api.ts`, gunakan environment variable untuk menentukan sumber data.
 
 ```typescript
+// src/services/api.ts
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
+// Export dinamis
 export const fetchAllData = USE_MOCK ? MockService.fetchAllData : RealService.fetchAllData;
 ```
 
 ### 2.2. Sinkronisasi Data Awal
-Data yang sudah diinput user di prototipe (LocalStorage) harus bisa dimigrasikan ke PostgreSQL.
+Data yang sudah diinput user di prototipe (LocalStorage) harus bisa dimigrasikan ke PostgreSQL agar tidak hilang saat go-live.
 
-1.  **Export Tool**: Tambahkan fitur tersembunyi di Frontend untuk men-dump `localStorage` menjadi `migration_dump.json`.
+1.  **Export Tool**: Tambahkan fitur tersembunyi (Admin Only) di Frontend untuk men-dump `localStorage` menjadi `migration_dump.json`.
 2.  **Seeding Script (Backend)**:
     *   Buat script `backend/scripts/import-mock.ts`.
     *   Baca `migration_dump.json`.
-    *   Lakukan mapping ID (karena ID mock mungkin string acak, sedangkan DB mungkin UUID/Int).
-    *   Insert ke DB menggunakan `prisma.createMany`.
+    *   Lakukan mapping ID (karena ID mock mungkin string acak 'AST-123', sedangkan DB mungkin UUID/Int, atau pertahankan ID string jika skema mengizinkan).
+    *   Insert ke DB menggunakan `prisma.createMany` dengan flag `skipDuplicates`.
 
 ---
 
@@ -115,29 +117,27 @@ Data yang sudah diinput user di prototipe (LocalStorage) harus bisa dimigrasikan
 Mengelola skema database di lingkungan produksi sangat berbeda dengan development.
 
 ### 3.1. Alur Migrasi (CI/CD)
-Jangan pernah gunakan `prisma migrate dev` di produksi. Itu akan mencoba mereset database jika ada konflik.
+Jangan pernah gunakan `prisma migrate dev` di produksi. Itu akan mencoba mereset database jika ada konflik sejarah migrasi.
 
 **Perintah Produksi:**
 ```bash
-# 1. Generate Client (Pastikan Type Definition terbaru)
+# 1. Generate Client (Pastikan Type Definition terbaru sesuai schema.prisma)
 npx prisma generate
 
-# 2. Deploy Migration (Hanya terapkan perubahan yang pending)
+# 2. Deploy Migration (Hanya terapkan perubahan yang pending dari folder migrations/)
 npx prisma migrate deploy
 ```
 
 ### 3.2. Data Seeding (Master Data)
-Data master (Divisi, Kategori Aset, Admin User) wajib ada saat aplikasi pertama kali deploy.
+Data master (Divisi, Kategori Aset, Admin User default) wajib ada saat aplikasi pertama kali deploy.
 
 1.  Pastikan file `backend/prisma/seed.ts` sudah dikonfigurasi.
-2.  Jalankan di server: `npx prisma db seed`.
+2.  Jalankan di server (biasanya langkah terakhir Docker entrypoint): `npx prisma db seed`.
 
 ### 3.3. Penanganan Shadow Database
-Prisma memerlukan "Shadow Database" sementara saat menjalankan `migrate dev` untuk mendeteksi perubahan schema.
-*   **Di Lokal**: Docker compose membuat DB utama. Prisma otomatis membuat DB shadow.
-*   **Di Cloud (RDS/CloudSQL)**: User DB mungkin tidak punya hak `CREATE DATABASE`.
-    *   *Solusi*: Buat manual database `triniti_shadow`.
-    *   Set env: `SHADOW_DATABASE_URL=postgresql://...?db=triniti_shadow`.
+Prisma memerlukan "Shadow Database" sementara saat menjalankan `migrate dev` (di lokal) untuk mendeteksi perubahan schema.
+*   **Di Lokal**: Docker compose membuat DB utama. Prisma otomatis membuat DB shadow jika user memiliki hak CREATEDB.
+*   **Di Cloud/Production**: Shadow DB tidak diperlukan untuk `migrate deploy`.
 
 ---
 
@@ -152,24 +152,24 @@ Semua endpoint harus mengembalikan format yang konsisten:
   "statusCode": 200,
   "message": "Data retrieved successfully",
   "data": { ... },
-  "meta": { "page": 1, "total": 100 } // Opsional
+  "meta": { "page": 1, "total": 100 } // Opsional untuk list
 }
 
 // Error
 {
   "statusCode": 400,
   "error": "Bad Request",
-  "message": ["email must be an email"]
+  "message": ["email must be an email"] // Pesan validasi
 }
 ```
 
 ### 4.2. Kebijakan Keamanan Data
 1.  **Enkripsi At-Rest**:
-    *   Password wajib di-hash (bcrypt).
+    *   Password wajib di-hash (bcrypt) dengan salt round minimal 10.
     *   Backup database dienkripsi (GPG/AES) sebelum upload ke cloud storage.
 2.  **Enkripsi In-Transit**:
     *   Wajib HTTPS/TLS 1.2+ untuk semua komunikasi API.
 3.  **Audit Trail (Immutability)**:
     *   Tabel `ActivityLog` bersifat *Append-Only*.
     *   Tidak boleh ada endpoint API `DELETE` atau `UPDATE` untuk tabel ini.
-    *   Hanya Database Admin level root yang bisa menghapus log (untuk maintenance/archiving).
+    *   Hanya Database Admin level root yang bisa menghapus log (untuk maintenance/archiving/pruning data tua).

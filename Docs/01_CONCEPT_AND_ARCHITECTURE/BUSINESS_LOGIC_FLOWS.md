@@ -34,15 +34,17 @@ stateDiagram-v2
     AWAITING_HANDOVER --> COMPLETED: Handover Selesai
 ```
 
-### 1.2. Alur Detil & Validasi
+### 1.2. Panduan Siklus Hidup Transaksi (Transaction Lifecycle Guide)
 
-| Tahap | Lajur Pengguna (Frontend) | Lajur Logika (Backend Service) | Edge Cases & Validasi |
+Tabel berikut merinci setiap langkah teknis dari Frontend hingga Database.
+
+| Tahap | Lajur Pengguna (Frontend) | Lajur Logika (Backend Service) | Edge Cases & Validasi (Negative Path) |
 | :--- | :--- | :--- | :--- |
-| **1. Pengajuan** | Staf memilih item dan kuantitas. Klik "Ajukan". | 1. Terima DTO `CreateRequest`.<br>2. **Atomic Transaction**: Query tabel `Asset` (status: `IN_STORAGE`) untuk cek ketersediaan.<br>3. Jika stok >= request, set status item `STOCK_ALLOCATED`.<br>4. Jika kurang, set `PROCUREMENT_NEEDED`. | **Negative Path**: Jika User adalah 'Staff', paksa tipe order 'Regular'. Leader boleh 'Urgent'. Payload kosong atau qty <= 0 wajib ditolak (400 Bad Request). |
-| **2. Review Logistik** | Admin Logistik melihat request PENDING. Mengedit qty jika perlu. Klik "Approve". | 1. Update status request -> `LOGISTIC_APPROVED`.<br>2. Trigger notifikasi WhatsApp ke grup Purchasing.<br>3. Jika ada revisi qty, catat di `ActivityLog`. | **Edge Case**: Jika semua item ditolak (qty=0), status otomatis transisi ke `REJECTED`. |
-| **3. Pembelian** | Admin Purchase input data PO, Vendor, Harga. Klik "Mulai Pengadaan". | 1. Validasi kelengkapan data pembelian (Harga, Vendor).<br>2. Update status -> `PURCHASING`. | **Validation**: Harga tidak boleh negatif. Tanggal beli tidak boleh di masa depan (kecuali pre-order). |
-| **4. Penerimaan (Staging)** | Admin Logistik klik "Barang Tiba". Membuka menu Staging. | 1. Update status -> `ARRIVED`.<br>2. Siapkan data *pre-fill* untuk registrasi aset. | **Handling**: Barang rusak saat diterima? (Masuk alur Return Vendor - *Future Dev*). |
-| **5. Konversi Aset** | Admin input SN/Mac Address. Klik "Simpan Aset". | 1. **Db Transaction**: <br>   a. Create `Asset` baru.<br>   b. Update `Request` (isRegistered = true, status = `COMPLETED`).<br>   c. Create `ActivityLog` (Asset Created). | **Failure Scenario**: Jika insert Asset gagal (misal duplikat SN), seluruh transaksi di-rollback. Request tetap `ARRIVED`. |
+| **1. Pengajuan** | Staf memilih item dan kuantitas. Klik "Ajukan". | 1. Terima DTO `CreateRequest`.<br>2. **Atomic Transaction**: Query tabel `Asset` (status: `IN_STORAGE`) untuk cek ketersediaan.<br>3. Jika stok >= request, set status item `STOCK_ALLOCATED`.<br>4. Jika kurang, set `PROCUREMENT_NEEDED`. | **Validasi Gagal**: Payload kosong atau qty <= 0 (Return `400 Bad Request`).<br>**DB Timeout**: Jika koneksi DB putus saat hitung stok, return `503 Service Unavailable` dan jangan simpan request. |
+| **2. Review Logistik** | Admin Logistik melihat request PENDING. Mengedit qty jika perlu. Klik "Approve". | 1. Update status request -> `LOGISTIC_APPROVED`.<br>2. Trigger notifikasi WhatsApp ke grup Purchasing.<br>3. Jika ada revisi qty, catat di `ActivityLog`. | **Rejection**: Jika semua item ditolak (qty=0), status otomatis transisi ke `REJECTED`.<br>**Race Condition**: Jika User membatalkan request saat Admin sedang review, Backend harus cek status terakhir sebelum commit. |
+| **3. Pembelian** | Admin Purchase input data PO, Vendor, Harga. Klik "Mulai Pengadaan". | 1. Validasi kelengkapan data pembelian (Harga > 0, Vendor terisi).<br>2. Update status -> `PURCHASING`. | **Validation**: Tanggal beli tidak boleh di masa depan (kecuali pre-order). |
+| **4. Penerimaan (Staging)** | Admin Logistik klik "Barang Tiba". Membuka menu Staging. | 1. Update status -> `ARRIVED`.<br>2. Siapkan data *pre-fill* untuk registrasi aset. | **Partial Arrival**: Jika barang baru datang sebagian, sistem harus mendukung *splitting* status (Fitur Fase 2). Saat ini tandai `ARRIVED` hanya jika semua lengkap. |
+| **5. Konversi Aset** | Admin input SN/Mac Address. Klik "Simpan Aset". | 1. **Db Transaction**: <br>   a. Create `Asset` baru.<br>   b. Update `Request` (isRegistered = true, status = `COMPLETED`).<br>   c. Create `ActivityLog` (Asset Created). | **Duplicate SN**: Jika SN sudah ada di DB (Unique Constraint Violation), rollback seluruh transaksi dan return error ke UI. Request tetap `ARRIVED`. |
 
 ---
 
@@ -77,7 +79,7 @@ sequenceDiagram
         BE->>DB: SELECT * FROM "Asset" WHERE id='AST-001' FOR UPDATE
         
         alt Asset Status != IN_STORAGE
-            DB-->>BE: Status is IN_USE
+            DB-->>BE: Status is IN_USE (Locked)
             BE->>DB: ROLLBACK
             BE-->>Admin: 409 Conflict (Aset sudah diambil orang lain)
         else Asset Status == IN_STORAGE
@@ -115,7 +117,7 @@ await prisma.$transaction(async (tx) => {
 
 Alur pergerakan aset keluar ke pelanggan dan kembali lagi ke gudang.
 
-### 3.1. Sequence Diagram: Dismantle (Penarikan)
+### 3.1. Sequence Diagram: Dismantle (Penarikan) dengan Skenario Gagal
 
 Proses ini melibatkan pemindahan tanggung jawab dari Pelanggan -> Teknisi -> Gudang.
 
@@ -131,8 +133,12 @@ sequenceDiagram
     BE->>DB: BEGIN TRANSACTION
     BE->>DB: Verify Asset (Must be IN_USE by Customer)
     
-    alt Asset Not Found at Customer
-       BE-->>Tech: 400 Bad Request
+    alt Asset Not Found or Status Mismatch
+       DB-->>BE: Error / Null
+       BE->>DB: ROLLBACK
+       BE-->>Tech: 400 Bad Request (Aset tidak valid)
+    else DB Connection Lost
+       BE-->>Tech: 503 Service Unavailable (Coba lagi)
     else Valid
        BE->>DB: Create DismantleReport (Status: PENDING_WAREHOUSE)
        BE->>DB: Update Asset (Status: IN_TRANSIT / MAINTENANCE)
@@ -158,10 +164,10 @@ sequenceDiagram
 
 | Skenario Error | Respon Sistem | Tindakan Pengguna |
 | :--- | :--- | :--- |
-| **Koneksi DB Terputus** saat Submit | Return `503 Service Unavailable` | Frontend menampilkan pesan "Koneksi terputus, data tersimpan di draft lokal. Coba lagi." |
+| **Koneksi DB Terputus** saat Submit | Return `503 Service Unavailable` | Frontend menampilkan pesan "Koneksi terputus, data tersimpan di draft lokal (jika PWA). Coba lagi." |
 | **Aset Tidak Ditemukan** (QR Code salah) | Return `404 Not Found` | Frontend meminta user scan ulang atau input manual ID. |
 | **Pelanggan Suspend** | Return `200 OK` (Warning) | Sistem tetap mengizinkan Dismantle (pemulihan aset prioritas), tapi memberi flag `warning` pada laporan. |
-| **Stok Material Habis** saat Instalasi | Return `409 Conflict` | Teknisi tidak bisa submit BA Instalasi sampai stok material di-restock di sistem. |
+| **Stok Material Habis** saat Instalasi | Return `409 Conflict` | Teknisi tidak bisa submit BA Instalasi sampai stok material di-restock di sistem, atau gunakan opsi "Material Darurat". |
 
 ---
 

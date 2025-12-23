@@ -66,16 +66,25 @@ app.useGlobalPipes(new ValidationPipe({
 -   **Penyimpanan Klien**: Disarankan menggunakan `httpOnly` cookie untuk mencegah pencurian token via XSS (Cross-Site Scripting), atau `localStorage` dengan sanitasi XSS yang ketat.
 -   **Refresh Token Pattern** (Rekomendasi Lanjutan): Gunakan refresh token berumur panjang (7 hari) yang disimpan di database dan `httpOnly` cookie untuk memperbarui access token tanpa login ulang.
 
-### 3.2. RBAC & Policy
--   Gunakan decorator `@Roles()` di setiap endpoint kritis.
--   **Least Privilege Principle**: Berikan hak akses seminimal mungkin. Contoh: Teknisi hanya boleh `READ` data aset, tidak boleh `DELETE`.
+### 3.2. RBAC & Policy (Matriks Akses)
+Gunakan decorator `@Roles()` di setiap endpoint kritis. Berikut adalah matriks sederhana:
+
+| Endpoint Group | Staff | Leader | Admin Logistik | Admin Purchase | Super Admin |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| `GET /api/assets` | ✅ (Own) | ✅ (Own) | ✅ (All) | ✅ (All) | ✅ (All) |
+| `POST /api/assets` | ❌ | ❌ | ✅ | ❌ | ✅ |
+| `DELETE /api/assets` | ❌ | ❌ | ❌ | ❌ | ✅ |
+| `POST /api/requests`| ✅ | ✅ | ✅ | ✅ | ✅ |
+| `PATCH /api/requests/:id/approve` | ❌ | ❌ | ✅ (Level 1) | ✅ (Level 2) | ✅ (Final) |
+
+**Least Privilege Principle**: Berikan hak akses seminimal mungkin.
 
 ## 4. Keamanan Data & Integritas
 
 ### 4.1. Audit Trail (Append-Only Log)
-Untuk memenuhi standar kepatuhan audit, tabel `ActivityLog` harus diperlakukan sebagai catatan sejarah yang sakral.
+Untuk memenuhi standar kepatuhan audit hukum, tabel `ActivityLog` harus diperlakukan sebagai catatan sejarah yang sakral.
 
-*   **Immutability**: Backend **TIDAK BOLEH** mengekspos endpoint untuk `UPDATE` atau `DELETE` pada tabel `ActivityLog`.
+*   **Immutability**: Backend **TIDAK BOLEH** mengekspos endpoint untuk `UPDATE` atau `DELETE` pada tabel `ActivityLog`. Log hanya boleh di-*insert*.
 *   **Kelengkapan**: Setiap aksi "Mutasi" (Create, Update, Delete) pada entitas bisnis (Asset, Request) wajib memicu pembuatan record baru di `ActivityLog` dalam satu transaksi database (`prisma.$transaction`).
 *   **Traceability**: Log harus mencatat `WHO` (User ID), `WHAT` (Action), `WHEN` (Timestamp), dan `DETAILS` (Snapshot data atau diff).
 
