@@ -52,6 +52,7 @@ model User {
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  deletedAt   DateTime? // Soft Delete support
 }
 ```
 
@@ -105,6 +106,7 @@ model Asset {
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  deletedAt       DateTime? // Soft Delete support
 }
 ```
 
@@ -155,13 +157,14 @@ model ActivityLog {
   userId      Int
   user        User     @relation(fields: [userId], references: [id])
   action      String   // "HANDOVER", "REPAIR", "STATUS_CHANGE"
-  details     String?  // JSON or Text description
+  details     Json?    // JSONB: Menyimpan snapshot data saat log dibuat
   timestamp   DateTime @default(now())
 }
 ```
 
 ## 3. Catatan Penting untuk Implementasi
 
-1.  **JSONB vs Relasi**: Untuk fitur seperti `Handover` yang menyimpan snapshot kondisi aset saat serah terima, disarankan menggunakan tipe data `JSONB` di PostgreSQL untuk menyimpan detail item, daripada membuat relasi yang terlalu kaku. Ini menjaga *history* tetap akurat meskipun data master aset berubah.
-2.  **Enum**: Gunakan fitur `enum` di Prisma untuk kolom `status`, `role`, dan `condition` untuk menjaga konsistensi data.
-3.  **Soft Delete**: Pertimbangkan menambahkan kolom `deletedAt` pada tabel `Asset` dan `User` agar data tidak hilang permanen saat dihapus (penting untuk audit).
+1.  **JSONB vs Relasi**: Untuk fitur seperti `Handover` atau `ActivityLog`, sangat disarankan menggunakan tipe data `JSONB` untuk menyimpan snapshot detail item. Ini menjaga integritas sejarah data (history) meskipun data master aset (nama, brand) berubah di kemudian hari.
+2.  **Enum**: Gunakan fitur `enum` di Prisma untuk kolom `status`, `role`, dan `condition` untuk menjaga konsistensi data dan menghindari *typo*.
+3.  **Soft Delete (Wajib)**: Kolom `deletedAt` telah ditambahkan pada tabel `Asset` dan `User`. Backend harus selalu memfilter `where: { deletedAt: null }` pada setiap query `find`, kecuali untuk keperluan audit atau restore.
+4.  **Constraints**: Pastikan `serialNumber` memiliki constraint `UNIQUE` hanya jika aset tersebut tidak terhapus (Partial Index di PostgreSQL).
