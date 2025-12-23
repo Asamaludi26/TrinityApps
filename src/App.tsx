@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo } from "react";
 import { User, Page, PreviewData, Asset, Request, LoanRequest, AssetReturn } from "./types";
 
@@ -233,13 +234,22 @@ const AppContent: React.FC = () => {
       
       case "return-form": {
         const loanRequestForReturn = useRequestStore.getState().loanRequests.find(lr => lr.id === pageInitialState?.loanId);
-        const assetToReturn = useAssetStore.getState().assets.find(a => a.id === pageInitialState?.assetId);
+        
+        // Handle single or multiple assets
+        let assetsToReturn: Asset[] = [];
+        if (pageInitialState?.assetIds && Array.isArray(pageInitialState.assetIds)) {
+             assetsToReturn = useAssetStore.getState().assets.filter(a => pageInitialState.assetIds.includes(a.id));
+        } else if (pageInitialState?.assetId) {
+             const asset = useAssetStore.getState().assets.find(a => a.id === pageInitialState.assetId);
+             if (asset) assetsToReturn = [asset];
+        }
+
         return (
              <ReturnAssetFormPage 
                 currentUser={currentUser}
-                onCancel={() => setActivePage('stock')}
+                onCancel={() => setActivePage('request-pinjam', { openDetailForId: loanRequestForReturn?.id })}
                 loanRequest={loanRequestForReturn}
-                assetToReturn={assetToReturn}
+                assetsToReturn={assetsToReturn}
              />
         );
       }
@@ -256,7 +266,7 @@ const AppContent: React.FC = () => {
                 isReadOnly={true}
                 returnDocument={returnDocument}
                 loanRequest={loanRequestForDetail}
-                assetToReturn={assetForDetail}
+                assetsToReturn={assetForDetail ? [assetForDetail] : []}
               />
           );
       }
