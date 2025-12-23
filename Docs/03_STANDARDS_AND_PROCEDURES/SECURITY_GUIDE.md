@@ -60,16 +60,26 @@ app.useGlobalPipes(new ValidationPipe({
 
 ## 3. Autentikasi & Otorisasi
 
-### 3.1. Manajemen Password
--   Password **tidak boleh** disimpan dalam plain text.
--   Gunakan **bcrypt** dengan salt rounds minimal 10.
+### 3.1. Mekanisme JWT (JSON Web Token)
+-   **Stateless**: Server tidak menyimpan session state.
+-   **Short-Lived Access Token**: Token akses hanya berlaku singkat (misal 12 jam).
+-   **Penyimpanan Klien**: Disarankan menggunakan `httpOnly` cookie untuk mencegah pencurian token via XSS (Cross-Site Scripting), atau `localStorage` dengan sanitasi XSS yang ketat.
+-   **Refresh Token Pattern** (Rekomendasi Lanjutan): Gunakan refresh token berumur panjang (7 hari) yang disimpan di database dan `httpOnly` cookie untuk memperbarui access token tanpa login ulang.
 
-### 3.2. JWT (JSON Web Token)
--   Token disimpan di sisi klien (biasanya `localStorage` atau `httpOnly` cookie).
--   Gunakan `expiration` waktu pendek (misal: 1 hari) untuk token akses.
--   Secret key (`JWT_SECRET`) harus panjang, acak, dan disimpan di `.env`, jangan pernah di-commit ke Git.
+### 3.2. RBAC & Policy
+-   Gunakan decorator `@Roles()` di setiap endpoint kritis.
+-   **Least Privilege Principle**: Berikan hak akses seminimal mungkin. Contoh: Teknisi hanya boleh `READ` data aset, tidak boleh `DELETE`.
 
-## 4. Keamanan Database
+## 4. Keamanan Data & Integritas
 
--   **SQL Injection**: Penggunaan **Prisma ORM** secara otomatis memitigasi risiko SQL Injection karena penggunaan *parameterized queries* di level engine. Hindari penggunaan `$queryRaw` dengan string concatenation manual.
--   **Akses Minimal**: User database yang digunakan aplikasi sebaiknya hanya memiliki hak akses `CRUD`, bukan `SUPERUSER`.
+### 4.1. Audit Trail (Append-Only Log)
+Untuk memenuhi standar kepatuhan audit, tabel `ActivityLog` harus diperlakukan sebagai catatan sejarah yang sakral.
+
+*   **Immutability**: Backend **TIDAK BOLEH** mengekspos endpoint untuk `UPDATE` atau `DELETE` pada tabel `ActivityLog`.
+*   **Kelengkapan**: Setiap aksi "Mutasi" (Create, Update, Delete) pada entitas bisnis (Asset, Request) wajib memicu pembuatan record baru di `ActivityLog` dalam satu transaksi database (`prisma.$transaction`).
+*   **Traceability**: Log harus mencatat `WHO` (User ID), `WHAT` (Action), `WHEN` (Timestamp), dan `DETAILS` (Snapshot data atau diff).
+
+### 4.2. Database Security
+*   **SQL Injection**: Penggunaan **Prisma ORM** secara otomatis memitigasi risiko SQL Injection karena penggunaan *parameterized queries* di level engine. Hindari penggunaan `$queryRaw` dengan string concatenation manual.
+*   **Database User Isolation**: User database yang digunakan aplikasi (`triniti_admin`) sebaiknya hanya memiliki hak akses `CRUD` pada tabel aplikasi, bukan `SUPERUSER`.
+*   **Backup Encryption**: File backup `.sql.gz` harus dienkripsi (misal menggunakan GPG) sebelum ditransfer keluar server (ke Cloud Storage) untuk mencegah kebocoran data jika backup dicuri.

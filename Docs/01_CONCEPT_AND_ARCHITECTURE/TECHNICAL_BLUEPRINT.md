@@ -15,7 +15,7 @@ graph TD
     subgraph "Frontend Layer (Client)"
         UI[React Components]
         Store[Zustand Store]
-        ApiClient[Axios Interceptor]
+        ApiClient[Api Service Layer]
     end
     
     subgraph "Network & Security Layer"
@@ -36,8 +36,10 @@ graph TD
 
     User -->|Klik Aksi| UI
     UI -->|Dispatch Action| Store
-    Store -->|Async Request| ApiClient
-    ApiClient -->|HTTPS Request (Bearer Token)| Nginx
+    Store -->|Call API| ApiClient
+    
+    ApiClient -.->|Dev Mode| LocalStorage[(Mock Data)]
+    ApiClient -->|Prod Mode (HTTPS)| Nginx
     
     Nginx -->|Forward| AuthGuard
     AuthGuard -- Valid --> Validator
@@ -55,114 +57,119 @@ graph TD
 
 ---
 
-## 2. Peta Dependensi Layanan (Service Dependency Map)
+## 2. Strategi Migrasi: Mock API ke Real API
 
-Menjelaskan ketergantungan antar modul dalam Monolith NestJS untuk menghindari *Circular Dependency* dan memahami dampak perubahan.
+Transisi dari prototipe ke produksi membutuhkan penggantian lapisan data tanpa merusak UI.
 
-*   **AuthModule**:
-    *   Bergantung pada: `UsersModule` (untuk validasi user).
-    *   Digunakan oleh: Hampir semua modul (via `JwtAuthGuard`).
-*   **TransactionsModule** (Handover, Installation, dll):
-    *   Bergantung pada: `AssetsModule` (update status aset), `UsersModule`, `CustomersModule`.
-    *   *Critical*: Menggunakan `PrismaService` secara langsung untuk transaksi lintas-tabel.
-*   **RequestsModule**:
-    *   Bergantung pada: `AssetsModule` (cek stok), `WhatsappModule` (notifikasi).
-*   **StockModule** (Ledger):
-    *   *Observer Pattern*: Mendengarkan event dari `AssetsModule` dan `TransactionsModule` untuk mencatat mutasi stok (`StockMovement`).
+### 2.1. Abstraksi Layanan API
+Saat ini, `src/services/api.ts` menangani logika mock.
+
+**Langkah 1: Interface Pattern**
+Buat interface standar untuk semua panggilan API.
+```typescript
+// src/services/interfaces.ts
+export interface IAssetService {
+    getAssets(): Promise<Asset[]>;
+    createAsset(data: CreateAssetDto): Promise<Asset>;
+    // ...
+}
+```
+
+**Langkah 2: Implementasi Real API**
+Buat `src/services/api.real.ts` yang menggunakan `axios` atau `fetch`.
+```typescript
+import axios from 'axios';
+const client = axios.create({ baseURL: import.meta.env.VITE_API_URL });
+
+export const RealAssetService = {
+    getAssets: async () => {
+        const { data } = await client.get('/assets');
+        return data.data; // Unrap response standar
+    }
+}
+```
+
+**Langkah 3: Switching Mechanism (Feature Flag)**
+Di `src/services/api.ts`, gunakan environment variable untuk menentukan sumber data.
+
+```typescript
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
+
+export const fetchAllData = USE_MOCK ? MockService.fetchAllData : RealService.fetchAllData;
+```
+
+### 2.2. Sinkronisasi Data Awal
+Data yang sudah diinput user di prototipe (LocalStorage) harus bisa dimigrasikan ke PostgreSQL.
+
+1.  **Export Tool**: Tambahkan fitur tersembunyi di Frontend untuk men-dump `localStorage` menjadi `migration_dump.json`.
+2.  **Seeding Script (Backend)**:
+    *   Buat script `backend/scripts/import-mock.ts`.
+    *   Baca `migration_dump.json`.
+    *   Lakukan mapping ID (karena ID mock mungkin string acak, sedangkan DB mungkin UUID/Int).
+    *   Insert ke DB menggunakan `prisma.createMany`.
 
 ---
 
-## 3. API Deep-Dive & Standar
+## 3. Prisma Production Lifecycle
 
-Semua endpoint API harus mematuhi standar berikut untuk konsistensi dan keamanan.
+Mengelola skema database di lingkungan produksi sangat berbeda dengan development.
 
-### 3.1. Standar Request & Response
+### 3.1. Alur Migrasi (CI/CD)
+Jangan pernah gunakan `prisma migrate dev` di produksi. Itu akan mencoba mereset database jika ada konflik.
 
-**Format Response Sukses (JSON):**
+**Perintah Produksi:**
+```bash
+# 1. Generate Client (Pastikan Type Definition terbaru)
+npx prisma generate
+
+# 2. Deploy Migration (Hanya terapkan perubahan yang pending)
+npx prisma migrate deploy
+```
+
+### 3.2. Data Seeding (Master Data)
+Data master (Divisi, Kategori Aset, Admin User) wajib ada saat aplikasi pertama kali deploy.
+
+1.  Pastikan file `backend/prisma/seed.ts` sudah dikonfigurasi.
+2.  Jalankan di server: `npx prisma db seed`.
+
+### 3.3. Penanganan Shadow Database
+Prisma memerlukan "Shadow Database" sementara saat menjalankan `migrate dev` untuk mendeteksi perubahan schema.
+*   **Di Lokal**: Docker compose membuat DB utama. Prisma otomatis membuat DB shadow.
+*   **Di Cloud (RDS/CloudSQL)**: User DB mungkin tidak punya hak `CREATE DATABASE`.
+    *   *Solusi*: Buat manual database `triniti_shadow`.
+    *   Set env: `SHADOW_DATABASE_URL=postgresql://...?db=triniti_shadow`.
+
+---
+
+## 4. Standar API & Keamanan Data
+
+### 4.1. Standar Response (JSend-like)
+Semua endpoint harus mengembalikan format yang konsisten:
+
 ```json
+// Sukses
 {
   "statusCode": 200,
-  "message": "Operation successful",
-  "data": { ...object atau array... },
-  "meta": { ...pagination info jika perlu... }
+  "message": "Data retrieved successfully",
+  "data": { ... },
+  "meta": { "page": 1, "total": 100 } // Opsional
 }
-```
 
-**Format Response Error:**
-```json
+// Error
 {
   "statusCode": 400,
-  "message": ["email must be an email", "password is too short"],
-  "error": "Bad Request"
+  "error": "Bad Request",
+  "message": ["email must be an email"]
 }
 ```
 
-### 3.2. Data Transfer Objects (DTO) & Validasi
-
-Backend **wajib** menggunakan `class-validator` untuk memvalidasi payload sebelum masuk ke logika bisnis.
-
-**Contoh: `CreateAssetDto`**
-```typescript
-export class CreateAssetDto {
-  @IsString()
-  @IsNotEmpty()
-  name: string;
-
-  @IsEnum(AssetCondition)
-  condition: AssetCondition;
-
-  // Validasi bersyarat: Jika kategori 'Device', SN wajib. Jika 'Material', optional.
-  @ValidateIf(o => o.trackingMethod === 'individual')
-  @IsNotEmpty()
-  serialNumber: string;
-}
-```
-
-### 3.3. Mekanisme Otorisasi (RBAC)
-
-Menggunakan custom decorator `@Roles()` di atas controller atau handler.
-
-```typescript
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Controller('assets')
-export class AssetsController {
-    
-    @Get()
-    @Roles('Staff', 'Leader', 'Admin Logistik') // Siapa saja bisa lihat
-    findAll() { ... }
-
-    @Post()
-    @Roles('Admin Logistik', 'Super Admin') // Hanya admin yang bisa buat
-    create(@Body() dto: CreateAssetDto) { ... }
-}
-```
-
----
-
-## 4. Rencana Migrasi Data (Mock to Real)
-
-Strategi untuk memindahkan data dari `localStorage` (fase prototipe) ke Database PostgreSQL (fase produksi).
-
-1.  **Fitur Ekspor JSON di Frontend**:
-    *   Tambahkan tombol tersembunyi di halaman Settings untuk "Export Local Data".
-    *   Script akan membaca semua key `app_*` di localStorage dan mengunduh sebagai satu file `backup_prototype.json`.
-2.  **Script Seeding Backend**:
-    *   Buat script Node.js (`scripts/migrate-mock-data.ts`) di backend.
-    *   Script membaca `backup_prototype.json`.
-    *   Melakukan *mapping* ID (karena ID mock mungkin string acak, sedangkan DB mungkin perlu format UUID standar atau Auto Increment yang konsisten).
-    *   Menginsert data ke PostgreSQL menggunakan Prisma `createMany`.
-3.  **Validasi Integritas**:
-    *   Cek apakah semua `assetId` di tabel `Transaction` benar-benar ada di tabel `Asset`.
-
----
-
-## 5. Keamanan Data (Data Security Policy)
-
+### 4.2. Kebijakan Keamanan Data
 1.  **Enkripsi At-Rest**:
-    *   Password di-hash menggunakan **bcrypt** (salt rounds >= 10).
-    *   Backup database dienkripsi sebelum di-upload ke cloud storage.
+    *   Password wajib di-hash (bcrypt).
+    *   Backup database dienkripsi (GPG/AES) sebelum upload ke cloud storage.
 2.  **Enkripsi In-Transit**:
-    *   Wajib HTTPS untuk semua komunikasi API.
-    *   Database connection string menggunakan mode SSL (`sslmode=require`).
+    *   Wajib HTTPS/TLS 1.2+ untuk semua komunikasi API.
 3.  **Audit Trail (Immutability)**:
-    *   Tabel `ActivityLog` bersifat *Append-Only*. Tidak boleh ada API `DELETE` atau `UPDATE` untuk tabel ini.
+    *   Tabel `ActivityLog` bersifat *Append-Only*.
+    *   Tidak boleh ada endpoint API `DELETE` atau `UPDATE` untuk tabel ini.
+    *   Hanya Database Admin level root yang bisa menghapus log (untuk maintenance/archiving).

@@ -4,47 +4,104 @@ Dokumen ini adalah panduan operasional lengkap untuk menyiapkan lingkungan produ
 
 ---
 
-## 1. Topologi Infrastruktur
+## 1. Topologi Jaringan & Keamanan
+
+Diagram ini menjelaskan bagaimana traffic mengalir dari internet publik masuk ke dalam server virtual (VM) yang terisolasi.
 
 ```mermaid
 graph TD
-    Internet((Internet))
+    UserClient[User Browser / Mobile]
     
-    subgraph "Proxmox Host (Physical Server)"
-        Firewall[Proxmox Firewall / Router]
+    subgraph "Jaringan Publik (Internet)"
+        DNS[Cloudflare / DNS Provider]
+    end
+    
+    subgraph "Infrastruktur Fisik (Proxmox Host)"
+        Firewall[Proxmox Firewall / Mikrotik]
         
-        subgraph "VM: AssetServer (Ubuntu LTS)"
-            Nginx[Nginx Reverse Proxy]
+        subgraph "Virtual Machine: AssetServer (192.168.x.x)"
+            Nginx[Nginx Reverse Proxy :80/:443]
             
-            subgraph "Docker Network (triniti_net)"
-                App[NestJS Backend API]
-                DB[(PostgreSQL 15)]
+            subgraph "Docker Network (Internal Bridge: 172.18.x.x)"
+                Backend[NestJS Container :3001]
+                DB[PostgreSQL Container :5432]
             end
             
-            Static[Frontend React Files]
+            Static[Frontend Static Files]
         end
     end
     
-    Internet -->|HTTPS : 443| Firewall
-    Internet -->|SSH : 9022| Firewall
+    UserClient -->|HTTPS Request| DNS
+    DNS -->|Public IP| Firewall
+    Firewall -->|Port Forwarding 80/443| Nginx
     
-    Firewall -->|Port Fwd| Nginx
-    
-    Nginx -->|/api/*| App
-    Nginx -->|/*| Static
-    App -->|TCP : 5432| DB
+    Nginx -->|Route /api/*| Backend
+    Nginx -->|Route /*| Static
+    Backend -->|TCP Connection| DB
 ```
 
-## 2. Pemetaan Port & Jaringan
+**Poin Keamanan Kritis:**
+*   Database (`:5432`) dan Backend API (`:3001`) **TIDAK** diekspos ke jaringan host atau publik. Mereka hanya bisa saling bicara di dalam Docker Network yang terisolasi.
+*   Hanya Nginx yang membuka port 80/443 ke dunia luar.
+*   Akses SSH menggunakan port custom (misal 9022) dan wajib menggunakan SSH Key (Disable Password Auth).
 
-Untuk keamanan, layanan internal (Database & API) tidak diekspos langsung ke internet. Semua akses melalui **Nginx Reverse Proxy**.
+---
 
-| Layanan | Port Internal (Docker) | Port Host (VM) | Port Publik (Internet) | Keterangan |
-| :--- | :--- | :--- | :--- | :--- |
-| **Nginx (Web)** | - | 80, 443 | 80, 443 | Entry point utama (HTTP/HTTPS). |
-| **SSH (Remote)** | - | 22 | 9022 | Akses terminal admin (Custom Port untuk keamanan). |
-| **Backend API** | 3001 | 3001 (Localhost only) | - | Diakses via Nginx proxy pass. |
-| **PostgreSQL** | 5432 | 5432 (Localhost only) | - | Hanya diakses oleh Backend API. |
+## 2. Operations Runbook (Panduan Operasional)
+
+Panduan langkah demi langkah untuk tugas maintenance rutin.
+
+### 2.1. Integrasi QEMU Guest Agent (Wajib untuk Proxmox)
+Agar Proxmox bisa memonitor penggunaan RAM/CPU VM secara akurat dan melakukan *graceful shutdown* (misal saat mati lampu dan UPS memicu shutdown), QEMU Agent harus aktif.
+
+1.  **Di dalam VM Ubuntu**:
+    ```bash
+    sudo apt update
+    sudo apt install qemu-guest-agent
+    sudo systemctl start qemu-guest-agent
+    sudo systemctl enable qemu-guest-agent
+    ```
+2.  **Di Panel Proxmox**:
+    *   Klik VM > Options > QEMU Guest Agent > Ubah ke "Enabled".
+    *   Reboot VM.
+    *   Verifikasi: IP Address VM akan muncul di halaman Summary Proxmox.
+
+### 2.2. Membersihkan Disk (Disk Cleanup)
+Docker sering meninggalkan image dan volume yang tidak terpakai ("dangling"), yang bisa memenuhi disk VM.
+
+**Prosedur Rutin (Bulanan):**
+```bash
+# 1. Hapus container yang berhenti, network yang tidak dipakai, dan build cache
+docker system prune -f
+
+# 2. Hapus image lama yang tidak digunakan oleh container aktif
+docker image prune -a -f --filter "until=24h"
+
+# 3. Cek penggunaan disk
+df -h
+```
+
+### 2.3. Pemulihan Database (Database Restore)
+Jika terjadi korupsi data dan perlu restore dari file backup `.sql.gz`.
+
+**Langkah Restore:**
+1.  Stop aplikasi backend agar tidak ada data baru masuk.
+    ```bash
+    docker compose stop api
+    ```
+2.  Copy file backup ke dalam container database.
+    ```bash
+    gunzip backup_file.sql.gz
+    docker cp backup_file.sql triniti_asset_db:/tmp/restore.sql
+    ```
+3.  Eksekusi restore di dalam container.
+    ```bash
+    docker exec -it triniti_asset_db psql -U triniti_admin -d triniti_asset -f /tmp/restore.sql
+    ```
+4.  Start kembali aplikasi.
+    ```bash
+    docker compose start api
+    ```
 
 ---
 
@@ -55,21 +112,25 @@ Ini adalah daftar lengkap variabel yang **WAJIB** dikonfigurasi di server produk
 ### Database Configuration
 ```env
 # Format: postgresql://USER:PASSWORD@HOST:PORT/DATABASE?schema=SCHEMA
-DATABASE_URL="postgresql://triniti_admin:SecureP@ssw0rd!@db:5432/triniti_asset?schema=public"
+# Host 'db' merujuk pada nama service di docker-compose.yml
+DATABASE_URL="postgresql://triniti_admin:SuperS3cretP@ss!@db:5432/triniti_asset?schema=public"
 
 # Digunakan oleh container postgres untuk inisialisasi awal
 POSTGRES_USER=triniti_admin
-POSTGRES_PASSWORD=SecureP@ssw0rd!
+POSTGRES_PASSWORD=SuperS3cretP@ss!
 POSTGRES_DB=triniti_asset
 ```
 
 ### Application Security
 ```env
-# Secret key untuk generate JWT Token. Generate string acak panjang (misal: openssl rand -base64 32)
-JWT_SECRET="ganti_dengan_string_sangat_panjang_dan_acak_min_32_karakter"
+# Generate string acak panjang (misal: openssl rand -base64 64)
+JWT_SECRET="ganti_dengan_string_sangat_panjang_dan_acak_min_64_karakter"
 
-# Durasi token (1d, 12h, 30m)
-JWT_EXPIRATION="1d"
+# Durasi token akses (pendek untuk keamanan)
+JWT_EXPIRATION="12h"
+
+# Durasi refresh token (jika diimplementasikan)
+JWT_REFRESH_EXPIRATION="7d"
 
 # API Port (Internal Docker)
 PORT=3001
@@ -77,11 +138,11 @@ PORT=3001
 
 ### Third-Party Integrations
 ```env
-# WhatsApp Gateway (Watzap.id / Lainnya)
-WA_API_URL="https://api.provider-wa.com/v1"
+# WhatsApp Gateway
+WA_API_URL="https://api.watzap.id/v1"
 WA_API_KEY="api_key_provider_wa"
 
-# ID Grup WhatsApp (Dapatkan dari logs provider WA)
+# ID Grup WhatsApp (Target Notifikasi)
 WA_GROUP_LOGISTIC_ID="1203630239482@g.us"
 WA_GROUP_PURCHASE_ID="1203630291823@g.us"
 WA_GROUP_MANAGEMENT_ID="1203630239123@g.us"
@@ -89,67 +150,23 @@ WA_GROUP_MANAGEMENT_ID="1203630239123@g.us"
 
 ---
 
-## 4. Konfigurasi Nginx (Reverse Proxy)
+## 4. Monitoring Kesehatan (Health Check)
 
-File konfigurasi Nginx (`/etc/nginx/sites-available/triniti-asset`) untuk menangani routing Frontend dan Backend dalam satu domain.
+Untuk memastikan sistem berjalan normal tanpa harus login ke dashboard aplikasi.
 
-```nginx
-server {
-    listen 80;
-    server_name aset.trinitimedia.com;
+1.  **Cek Status Docker**:
+    ```bash
+    docker compose ps
+    # Semua state harus "Up"
+    ```
 
-    # Redirect HTTP to HTTPS (Aktifkan setelah SSL terpasang)
-    # return 301 https://$host$request_uri;
-    
-    # 1. FRONTEND: Sajikan file statis React
-    location / {
-        root /opt/triniti-app/frontend/dist;
-        index index.html;
-        try_files $uri $uri/ /index.html; # Penting untuk React Router (SPA)
-    }
+2.  **Cek Log Realtime (Debugging Error 500)**:
+    ```bash
+    docker compose logs -f api --tail=100
+    ```
 
-    # 2. BACKEND: Proxy ke container NestJS
-    location /api/ {
-        proxy_pass http://localhost:3001/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-        
-        # Security Headers
-        add_header X-Frame-Options "SAMEORIGIN";
-        add_header X-XSS-Protection "1; mode=block";
-    }
-}
-```
-
----
-
-## 5. Prosedur Maintenance & Operasional
-
-### 5.1. Migrasi Database (Schema Update)
-Jika ada perubahan struktur tabel di `schema.prisma`, lakukan langkah ini di server:
-
-```bash
-cd /opt/triniti-app
-# Masuk ke container API untuk menjalankan migrasi
-docker compose exec api npx prisma migrate deploy
-```
-*Catatan: `migrate deploy` aman untuk produksi, tidak akan mereset data (beda dengan `migrate dev`).*
-
-### 5.2. Auto-Healing (Restart Policy)
-Docker Compose dikonfigurasi dengan `restart: always`.
-*   Jika backend crash karena error koding, Docker akan otomatis me-restart container dalam hitungan detik.
-*   Jika server VM reboot (misal mati lampu), aplikasi akan otomatis menyala saat server up.
-
-### 5.3. Monitoring Kesehatan (Health Check)
-Untuk memeriksa apakah semua layanan berjalan:
-
-```bash
-# Cek status container
-docker compose ps
-
-# Cek logs realtime backend (berguna untuk debug error 500)
-docker compose logs -f api
-```
+3.  **Endpoint Health Check (API)**:
+    Backend harus menyediakan endpoint `/api/health` yang mengembalikan status 200 OK jika koneksi DB aman.
+    ```bash
+    curl http://localhost:3001/api/health
+    ```
