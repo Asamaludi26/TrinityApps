@@ -9,12 +9,22 @@ Kita akan menjalankan 3 container (layanan) yang saling terhubung:
 2.  **Backend (NestJS)**: API Server.
 3.  **Frontend (Nginx)**: Web Server untuk menyajikan file React statis.
 
-## 2. Persiapan VM (Proxmox)
+## 2. Persiapan VM (Proxmox) & Hardware Requirement
 Minta tim infrastruktur untuk menyiapkan VM dengan spesifikasi minimal:
 *   OS: Ubuntu 22.04 LTS / Debian 11+
 *   CPU: 2 Core
 *   RAM: 4 GB
 *   Disk: 20 GB
+
+### QEMU Guest Agent (Wajib)
+Fitur ini memastikan Proxmox dapat memantau IP dan melakukan shutdown VM dengan aman.
+1.  **Di Proxmox Node**: Klik VM > Options > QEMU Guest Agent > **Enabled**.
+2.  **Di dalam VM (SSH)**:
+    ```bash
+    sudo apt update && sudo apt install qemu-guest-agent -y
+    sudo systemctl start qemu-guest-agent
+    ```
+3.  **Reboot VM** (Cold Boot diperlukan agar setting Proxmox aktif).
 
 **Install Docker di VM:**
 ```bash
@@ -28,7 +38,12 @@ sudo apt install docker-compose-plugin
 ```
 
 ## 3. Struktur File Deployment
-Di server, buat folder `/opt/triniti-app` dan buat file `docker-compose.yml`:
+Di server, buat folder `/opt/triniti-app` dan buat file `docker-compose.yml`.
+
+### Persistent Database Volumes (PENTING)
+AI Studio/Docker Container bersifat *ephemeral* (sementara). Agar data inventori tidak hilang saat container di-restart atau di-update, kita wajib memetakan volume ke disk fisik VM.
+
+Pastikan konfigurasi `volumes` di bawah ini ada:
 
 ```yaml
 version: '3.8'
@@ -42,8 +57,9 @@ services:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: triniti_inventory
+    # PERSISTENT STORAGE MAPPING
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - ./pgdata:/var/lib/postgresql/data 
     networks:
       - app_net
 
@@ -51,7 +67,7 @@ services:
   api:
     image: triniti/backend:latest
     restart: always
-    build: ./backend  # Jika build di server
+    build: ./backend
     depends_on:
       - db
     environment:
@@ -67,52 +83,89 @@ services:
   web:
     image: triniti/frontend:latest
     restart: always
-    build: ./frontend # Jika build di server
+    build: ./frontend
     ports:
-      - "80:80"
+      - "80:80" # HTTP Port
+      - "443:443" # HTTPS Port
+    volumes:
+      # Mapping sertifikat SSL dari Host ke Container
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - api
     networks:
       - app_net
 
-volumes:
-  db_data:
-
 networks:
   app_net:
 ```
 
-## 4. Langkah Deployment
+## 4. Konfigurasi HTTPS (SSL Certificate)
 
-1.  **Upload Source Code**: Upload folder project ke server (bisa via Git clone).
-2.  **Konfigurasi Environment**: Buat file `.env` di folder yang sama dengan `docker-compose.yml`.
-    ```env
-    DB_USER=admin_triniti
-    DB_PASSWORD=rahasia_sangat_kuat
-    JWT_SECRET=kunci_rahasia_jwt_panjang
+AI Studio tidak dapat mengonfigurasi SSL nyata. Anda harus melakukannya manual di VM menggunakan Certbot (Let's Encrypt).
+
+### Langkah Instalasi Certbot di VM Host:
+1.  Pastikan domain (misal: `aset.trinitimedia.com`) sudah diarahkan ke IP Public VM.
+2.  Install Certbot:
+    ```bash
+    sudo apt install certbot
     ```
+3.  Generate Sertifikat (Port 80 harus kosong sementara):
+    ```bash
+    sudo certbot certonly --standalone -d aset.trinitimedia.com
+    ```
+4.  Sertifikat akan tersimpan di `/etc/letsencrypt/live/aset.trinitimedia.com/`.
+
+### Konfigurasi Nginx (nginx.conf):
+Buat file `nginx.conf` di sebelah `docker-compose.yml`:
+```nginx
+server {
+    listen 80;
+    server_name aset.trinitimedia.com;
+    return 301 https://$host$request_uri; # Redirect HTTP to HTTPS
+}
+
+server {
+    listen 443 ssl;
+    server_name aset.trinitimedia.com;
+
+    ssl_certificate /etc/letsencrypt/live/aset.trinitimedia.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/aset.trinitimedia.com/privkey.pem;
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api {
+        proxy_pass http://api:3000; # Forward to Backend Container
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+## 5. Langkah Eksekusi (Start)
+
+1.  **Upload Source Code**: Upload folder project ke server.
+2.  **Konfigurasi Environment**: Buat file `.env`.
 3.  **Jalankan Aplikasi**:
     ```bash
     docker compose up -d --build
     ```
-    Perintah ini akan:
-    *   Membangun image frontend dan backend.
-    *   Membuat database.
-    *   Menjalankan semua layanan di background.
 
-4.  **Cek Status**:
-    ```bash
-    docker compose ps
-    docker compose logs -f api  # Lihat log backend
-    ```
-
-## 5. Maintenance (Monitoring Sederhana)
-Karena menggunakan Docker, Anda tidak perlu khawatir service mati sendiri (ada `restart: always`).
+## 6. Maintenance
 
 *   **Backup Database**:
     ```bash
-    docker exec -t [container_db_name] pg_dumpall -c -U [db_user] > dump_`date +%d-%m-%Y"_"%H_%M_%S`.sql
+    # Backup volume ./pgdata secara berkala atau gunakan pg_dump
+    docker exec -t [container_db_name] pg_dumpall -c -U [db_user] > dump_`date +%d-%m-%Y`.sql
     ```
-*   **Update Aplikasi**:
-    1.  `git pull` (tarik kode terbaru).
-    2.  `docker compose up -d --build` (rebuild ulang container).
+*   **Renew SSL**:
+    ```bash
+    # Stop container web sebentar
+    docker compose stop web
+    sudo certbot renew
+    docker compose start web
+    ```

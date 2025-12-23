@@ -1,8 +1,4 @@
 
-
-
-
-
 import { create } from 'zustand';
 import { Handover, Dismantle, Maintenance, Installation } from '../types';
 import * as api from '../services/api';
@@ -16,24 +12,20 @@ interface TransactionState {
   installations: Installation[];
   isLoading: boolean;
 
-  // Actions
   fetchTransactions: () => Promise<void>;
+  refreshAll: () => Promise<void>;
 
-  // Handover
   addHandover: (handover: Handover) => Promise<void>;
   deleteHandover: (id: string) => Promise<void>;
 
-  // Dismantle
   addDismantle: (dismantle: Dismantle) => Promise<void>;
   updateDismantle: (id: string, data: Partial<Dismantle>) => Promise<void>;
   deleteDismantle: (id: string) => Promise<void>;
 
-  // Maintenance
   addMaintenance: (maintenance: Maintenance) => Promise<void>;
   updateMaintenance: (id: string, data: Partial<Maintenance>) => Promise<void>;
   deleteMaintenance: (id: string) => Promise<void>;
 
-  // Installation
   addInstallation: (installation: Installation) => Promise<void>;
   deleteInstallation: (id: string) => Promise<void>;
 }
@@ -44,6 +36,10 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   maintenances: [],
   installations: [],
   isLoading: false,
+
+  refreshAll: async () => {
+      await get().fetchTransactions();
+  },
 
   fetchTransactions: async () => {
     set({ isLoading: true });
@@ -57,19 +53,16 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
         isLoading: false 
       });
     } catch (error) {
-      console.error("Failed to fetch transactions", error);
       set({ isLoading: false });
     }
   },
 
-  // --- HANDOVERS ---
   addHandover: async (handover) => {
     const current = get().handovers;
     const updated = [handover, ...current];
     await api.updateData('app_handovers', updated);
     set({ handovers: updated });
 
-    // --- NOTIFICATION LOGIC ---
     const addSystemNotification = useNotificationStore.getState().addSystemNotification;
     const users = useMasterDataStore.getState().users;
     const recipient = users.find(u => u.name === handover.penerima);
@@ -82,7 +75,6 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
             message: `menyerahkan ${handover.items.length} aset baru kepada Anda.`
         });
     }
-    // --- END NOTIFICATION LOGIC ---
   },
   
   deleteHandover: async (id) => {
@@ -92,7 +84,6 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       set({ handovers: updated });
   },
 
-  // --- DISMANTLES ---
   addDismantle: async (dismantle) => {
     const current = get().dismantles;
     const updated = [dismantle, ...current];
@@ -114,7 +105,6 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       set({ dismantles: updated });
   },
 
-  // --- MAINTENANCES ---
   addMaintenance: async (maintenance) => {
     const current = get().maintenances;
     const updated = [maintenance, ...current];
@@ -136,7 +126,6 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       set({ maintenances: updated });
   },
 
-  // --- INSTALLATIONS ---
   addInstallation: async (installation) => {
     const current = get().installations;
     const updated = [installation, ...current];

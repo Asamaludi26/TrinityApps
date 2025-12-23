@@ -1,6 +1,6 @@
 
 import {
-    Asset, Request, Handover, Dismantle, Customer, User, Division, AssetCategory, Notification, LoanRequest, Maintenance, Installation, AssetReturn, AssetStatus, LoanRequestStatus
+    Asset, Request, Handover, Dismantle, Customer, User, Division, AssetCategory, Notification, LoanRequest, Maintenance, Installation, AssetReturn, AssetStatus, LoanRequestStatus, StockMovement, LoginResponse
 } from '../types';
 import {
   initialMockRequests,
@@ -17,85 +17,113 @@ import {
   mockInstallations,
   mockReturns
 } from '../data/mockData';
+import { useNotificationStore } from '../stores/useNotificationStore';
+import { useAuthStore } from '../stores/useAuthStore';
 
-// --- Configuration ---
-const MOCK_LATENCY_MS = 600; // Simulasi network delay yang lebih realistis
-const SHOULD_LOG = true; // Untuk debugging
+// --- CONFIGURATION ---
+// Safely access environment variables
+const getEnv = () => {
+    try {
+        return (import.meta as any).env || {};
+    } catch {
+        return {};
+    }
+};
+const env = getEnv();
 
-// --- Helper for LocalStorage ---
+const USE_MOCK = env.VITE_USE_MOCK !== 'false'; // Default to TRUE if not specified
+const API_URL = env.VITE_API_URL || 'http://localhost:3001/api';
+const MOCK_LATENCY = 600;
 
-function getFromStorage<T>(key: string): T | null {
+// --- ERROR HANDLING INTERCEPTOR ---
+const handleError = (error: any) => {
+    const message = error.message || 'Terjadi kesalahan jaringan.';
+    // Avoid circular dependency by getting state directly
+    useNotificationStore.getState().addToast(message, 'error');
+    
+    if (error.status === 401) {
+        useAuthStore.getState().logout();
+        window.location.href = '/';
+    }
+    throw error;
+};
+
+// --- REAL API CLIENT (FETCH WRAPPER) ---
+const fetchClient = async <T>(endpoint: string, options: RequestInit = {}): Promise<T> => {
+    const token = localStorage.getItem('auth-storage') 
+        ? JSON.parse(localStorage.getItem('auth-storage')!).state?.currentUser?.token 
+        : null;
+
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...options.headers,
+    };
+
+    try {
+        const response = await fetch(`${API_URL}${endpoint}`, { ...options, headers });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw { status: response.status, message: errorData.message || response.statusText };
+        }
+        return response.json();
+    } catch (error) {
+        return handleError(error);
+    }
+};
+
+// --- MOCK STORAGE HELPERS ---
+const getFromStorage = <T>(key: string): T | null => {
     try {
         const storedValue = localStorage.getItem(key);
-        if (storedValue && storedValue !== 'undefined') {
-            return JSON.parse(storedValue);
-        }
-        return null;
-    } catch (error) {
-        console.error(`Gagal mem-parsing localStorage untuk kunci "${key}":`, error);
-        return null;
-    }
-}
+        return storedValue ? JSON.parse(storedValue) : null;
+    } catch (e) { return null; }
+};
 
-function saveToStorage<T>(key: string, value: T): void {
-    try {
-        localStorage.setItem(key, JSON.stringify(value));
-        if (SHOULD_LOG) console.log(`[MOCK API] Data saved to ${key}`);
-    } catch (error) {
-        console.error(`Gagal menyimpan ke localStorage untuk kunci "${key}":`, error);
-    }
-}
+const saveToStorage = <T>(key: string, value: T): void => {
+    localStorage.setItem(key, JSON.stringify(value));
+};
 
-// --- Generic API Client Simulator ---
-async function request<T>(operation: () => T, latency: number = MOCK_LATENCY_MS): Promise<T> {
-    if (SHOULD_LOG) console.log("[MOCK API] Request received...");
-    
+const mockRequest = <T>(operation: () => T): Promise<T> => {
     return new Promise((resolve, reject) => {
         setTimeout(() => {
             try {
-                const result = operation();
-                if (SHOULD_LOG) console.log("[MOCK API] Request successful.", result);
-                resolve(result);
+                resolve(operation());
             } catch (error) {
-                console.error("[MOCK API ERROR]", error);
                 reject(error);
             }
-        }, latency);
+        }, MOCK_LATENCY);
     });
-}
-
-// --- Data Initialization ---
-const initializeData = () => {
-    const initKey = <T>(key: string, initialData: T) => {
-        const existing = localStorage.getItem(key);
-        if (!existing) {
-            saveToStorage(key, initialData);
-        }
-    };
-
-    initKey('app_users', initialMockUsers);
-    initKey('app_assets', mockAssets);
-    initKey('app_requests', initialMockRequests);
-    initKey('app_handovers', mockHandovers);
-    initKey('app_dismantles', mockDismantles);
-    initKey('app_customers', mockCustomers);
-    initKey('app_divisions', mockDivisions);
-    initKey('app_assetCategories', initialAssetCategories);
-    initKey('app_notifications', mockNotifications);
-    initKey('app_loanRequests', mockLoanRequests);
-    initKey('app_maintenances', mockMaintenances);
-    initKey('app_installations', mockInstallations);
-    initKey('app_returns', mockReturns);
 };
 
-initializeData();
+// --- DATA INITIALIZATION (MOCK ONLY) ---
+const initializeMockData = () => {
+    if (!USE_MOCK) return;
+    const init = <T>(key: string, data: T) => {
+        if (!localStorage.getItem(key)) saveToStorage(key, data);
+    };
+    init('app_users', initialMockUsers);
+    init('app_assets', mockAssets);
+    init('app_requests', initialMockRequests);
+    init('app_handovers', mockHandovers);
+    init('app_dismantles', mockDismantles);
+    init('app_customers', mockCustomers);
+    init('app_divisions', mockDivisions);
+    init('app_assetCategories', initialAssetCategories);
+    init('app_notifications', mockNotifications);
+    init('app_loanRequests', mockLoanRequests);
+    init('app_maintenances', mockMaintenances);
+    init('app_installations', mockInstallations);
+    init('app_returns', mockReturns);
+    init('app_stockMovements', []);
+};
+initializeMockData();
 
+// --- PUBLIC API METHODS ---
 
-// --- Public API Methods ---
-
-export const fetchAllData = () => {
-    return request(() => {
-        return {
+export const fetchAllData = async () => {
+    if (USE_MOCK) {
+        return mockRequest(() => ({
             assets: getFromStorage<Asset[]>('app_assets') || [],
             requests: getFromStorage<Request[]>('app_requests') || [],
             handovers: getFromStorage<Handover[]>('app_handovers') || [],
@@ -109,114 +137,146 @@ export const fetchAllData = () => {
             maintenances: getFromStorage<Maintenance[]>('app_maintenances') || [],
             installations: getFromStorage<Installation[]>('app_installations') || [],
             returns: getFromStorage<AssetReturn[]>('app_returns') || [],
-        };
-    }, 500); 
+            stockMovements: getFromStorage<StockMovement[]>('app_stockMovements') || [],
+        }));
+    } else {
+        // In real backend, we might fetch these parallelly or via a 'dashboard' aggregation endpoint
+        // For simplicity, we assume separate endpoints here.
+        const [assets, requests, users, divisions, categories] = await Promise.all([
+            fetchClient<Asset[]>('/assets'),
+            fetchClient<Request[]>('/requests'),
+            fetchClient<User[]>('/users'),
+            fetchClient<Division[]>('/divisions'),
+            fetchClient<AssetCategory[]>('/categories'),
+            // ... fetch others
+        ]);
+        return { assets, requests, users, divisions, assetCategories: categories, handovers: [], dismantles: [], customers: [], notifications: [], loanRequests: [], maintenances: [], installations: [], returns: [], stockMovements: [] };
+    }
 };
 
-export function updateData<T>(key: string, data: T | ((prevData: T) => T)): Promise<T> {
-    return request(() => {
-        if (typeof data === 'function') {
-            const currentData = getFromStorage(key) as T | null ?? [] as T;
-            const newData = (data as (prevData: T) => T)(currentData);
-            saveToStorage(key, newData);
-            return newData;
-        } else {
+// --- GENERIC UPDATE (MOCK ONLY COMPATIBILITY) ---
+// Note: In real implementation, specific methods below should be used.
+export const updateData = async <T>(key: string, data: T): Promise<T> => {
+    if (USE_MOCK) {
+        return mockRequest(() => {
             saveToStorage(key, data);
             return data;
-        }
-    });
-}
-
-// --- TRANSACTIONAL ENDPOINTS (Simulasi Backend Logic) ---
-
-/**
- * Endpoint Transaksi Khusus untuk Menyetujui Peminjaman.
- * Melakukan validasi stok (race condition check) dan update atomic.
- */
-export const approveLoanTransaction = (
-    requestId: string, 
-    payload: { 
-        approver: string, 
-        approvalDate: string, 
-        assignedAssetIds: Record<number, string[]>, 
-        itemStatuses: any 
+        });
     }
+    throw new Error("updateData is for Mock Mode only. Use specific service methods.");
+};
+
+
+// --- AUTHENTICATION ---
+export const loginUser = async (email: string, pass: string): Promise<User> => {
+    if (USE_MOCK) {
+        return mockRequest(() => {
+            const users = getFromStorage<User[]>('app_users') || initialMockUsers;
+            const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+            if (!user) throw new Error("Invalid credentials");
+            return user;
+        });
+    }
+    const res = await fetchClient<LoginResponse>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password: pass })
+    });
+    // Store token manually if needed or handle via HttpOnly cookie
+    return res.user;
+};
+
+// --- TRANSACTIONAL LOGIC (HEAVY LIFTING) ---
+
+export const approveLoanTransaction = async (
+    requestId: string, 
+    payload: { approver: string, approvalDate: string, assignedAssetIds: Record<number, string[]>, itemStatuses: any }
 ) => {
-    return request(() => {
-        // 1. Load Fresh Data (Simulate DB Query)
-        const requests = getFromStorage<LoanRequest[]>('app_loanRequests') || [];
-        const assets = getFromStorage<Asset[]>('app_assets') || [];
-        
-        const requestIndex = requests.findIndex(r => r.id === requestId);
-        if (requestIndex === -1) throw new Error("Request tidak ditemukan.");
-        const targetRequest = requests[requestIndex];
+    if (USE_MOCK) {
+        return mockRequest(() => {
+            const requests = getFromStorage<LoanRequest[]>('app_loanRequests') || [];
+            const assets = getFromStorage<Asset[]>('app_assets') || [];
+            const targetIndex = requests.findIndex(r => r.id === requestId);
+            
+            if (targetIndex === -1) throw new Error("Request not found");
 
-        // 2. RACE CONDITION CHECK (Critical Step)
-        // Validasi apakah semua aset yang dipilih MASIH berstatus 'IN_STORAGE'
-        const assetIdsToAssign = Object.values(payload.assignedAssetIds).flat();
-        
-        const conflictingAssets = assets.filter(a => 
-            assetIdsToAssign.includes(a.id) && a.status !== AssetStatus.IN_STORAGE
-        );
+            // Race Condition Check (Mock)
+            const assetIdsToCheck = Object.values(payload.assignedAssetIds).flat() as string[];
+            const conflicting = assets.filter(a => assetIdsToCheck.includes(a.id) && a.status !== AssetStatus.IN_STORAGE);
+            
+            if (conflicting.length > 0) {
+                throw new Error(`Aset berikut tidak tersedia: ${conflicting.map(a => a.name).join(', ')}`);
+            }
 
-        if (conflictingAssets.length > 0) {
-            const names = conflictingAssets.map(a => `${a.name} (${a.id})`).join(', ');
-            throw new Error(`TRANSAKSI GAGAL: Aset berikut telah diambil oleh pengguna lain: ${names}. Harap refresh halaman.`);
-        }
+            // Update Request
+            const updatedRequest = {
+                ...requests[targetIndex],
+                ...payload,
+                status: Object.values(payload.itemStatuses).every((s: any) => s.status === 'rejected') ? LoanRequestStatus.REJECTED : LoanRequestStatus.APPROVED
+            };
+            requests[targetIndex] = updatedRequest;
+            saveToStorage('app_loanRequests', requests);
 
-        // 3. ATOMIC UPDATE (Jika lolos validasi)
-        
-        // A. Update Request Status
-        const allStatuses = Object.values(payload.itemStatuses).map((s: any) => s.status);
-        const allRejected = allStatuses.every(s => s === 'rejected');
-        const newStatus = allRejected ? LoanRequestStatus.REJECTED : LoanRequestStatus.APPROVED;
-
-        const updatedRequest = {
-            ...targetRequest,
-            status: newStatus,
-            approver: payload.approver,
-            approvalDate: payload.approvalDate,
-            assignedAssetIds: payload.assignedAssetIds,
-            itemStatuses: payload.itemStatuses,
-            rejectionReason: allRejected ? "Semua item ditolak oleh Admin." : undefined
-        };
-        
-        requests[requestIndex] = updatedRequest;
-        saveToStorage('app_loanRequests', requests);
-
-        // B. Update Assets Status (Locking Assets)
-        if (!allRejected && assetIdsToAssign.length > 0) {
-            const updatedAssets = assets.map(asset => {
-                if (assetIdsToAssign.includes(asset.id)) {
-                    return {
-                        ...asset,
-                        status: AssetStatus.IN_USE,
-                        currentUser: targetRequest.requester,
-                        location: `Dipinjam oleh ${targetRequest.requester}`,
-                        lastModifiedDate: new Date().toISOString(),
-                        lastModifiedBy: payload.approver
-                    };
-                }
-                return asset;
-            });
-            saveToStorage('app_assets', updatedAssets);
-        }
-
-        return updatedRequest;
+            // Update Assets
+            if (updatedRequest.status === LoanRequestStatus.APPROVED) {
+                const updatedAssets = assets.map(a => {
+                    if (assetIdsToCheck.includes(a.id)) {
+                        return { 
+                            ...a, 
+                            status: AssetStatus.IN_USE, 
+                            currentUser: updatedRequest.requester,
+                            location: `Dipinjam: ${updatedRequest.requester}`
+                        };
+                    }
+                    return a;
+                });
+                saveToStorage('app_assets', updatedAssets);
+            }
+            
+            return updatedRequest;
+        });
+    }
+    
+    return fetchClient<LoanRequest>(`/loan-requests/${requestId}/approve`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload)
     });
 };
 
-// 3. Auth
-export const loginUser = (email: string, pass: string): Promise<User> => {
-     return request(() => {
-        const users = getFromStorage<User[]>('app_users') || initialMockUsers;
-        const foundUser = users.find(user => user.email.toLowerCase() === email.toLowerCase());
+export const recordStockMovement = async (movementData: Omit<StockMovement, 'id' | 'balanceAfter'>) => {
+    if (USE_MOCK) {
+        return mockRequest(() => {
+            const allMovements = getFromStorage<StockMovement[]>('app_stockMovements') || [];
+            
+            const newMovement: StockMovement = {
+                id: `MOV-${Date.now()}`,
+                ...movementData,
+                quantity: Math.abs(movementData.quantity),
+                balanceAfter: 0
+            };
 
-        if (foundUser) {
-            localStorage.setItem('currentUser', JSON.stringify(foundUser));
-            return foundUser;
-        } else {
-            throw new Error("Invalid credentials");
-        }
-    }, 800);
-}
+            // Filter for specific item
+            const itemMovements = allMovements.filter(m => m.assetName === movementData.assetName && m.brand === movementData.brand);
+            const combined = [...itemMovements, newMovement].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            // Recalculate Ledger
+            let balance = 0;
+            const recalculated = combined.map(m => {
+                if (m.type.startsWith('IN_')) balance += m.quantity;
+                else balance = Math.max(0, balance - m.quantity);
+                return { ...m, balanceAfter: balance };
+            });
+
+            // Merge back
+            const others = allMovements.filter(m => !(m.assetName === movementData.assetName && m.brand === movementData.brand));
+            const final = [...others, ...recalculated];
+            
+            saveToStorage('app_stockMovements', final);
+            return final;
+        });
+    }
+
+    return fetchClient<StockMovement[]>('/stock/movements', {
+        method: 'POST',
+        body: JSON.stringify(movementData)
+    });
+};
