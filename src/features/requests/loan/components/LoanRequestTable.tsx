@@ -36,11 +36,11 @@ const SortableHeader: React.FC<{
     return (
         <th 
             scope="col" 
-            className={`px-6 py-4 text-sm font-extrabold uppercase tracking-wider text-slate-700 cursor-pointer group select-none transition-all duration-200 hover:bg-slate-100/80 ${className}`} 
+            className={`px-4 sm:px-6 py-4 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-slate-700 cursor-pointer group select-none transition-all duration-200 hover:bg-slate-100/80 ${className}`} 
             onClick={() => requestSort(columnKey)}
         >
             <div className="flex items-center gap-2">
-                <span className="group-hover:text-slate-900 transition-colors">{children}</span>
+                <span className="group-hover:text-slate-900 transition-colors whitespace-nowrap">{children}</span>
                 <span className="flex-shrink-0 flex items-center justify-center">
                    {isSorted ? (
                         <span className="text-tm-primary bg-blue-100/50 p-0.5 rounded shadow-sm animate-fade-in-up">
@@ -72,9 +72,9 @@ export const LoanRequestTable: React.FC<LoanRequestTableProps> = ({ requests, on
                 <tr>
                     <SortableHeader columnKey="id" sortConfig={sortConfig} requestSort={requestSort}>Info Request</SortableHeader>
                     <SortableHeader columnKey="requester" sortConfig={sortConfig} requestSort={requestSort}>Pemohon</SortableHeader>
-                    <th scope="col" className="px-6 py-4 text-sm font-extrabold uppercase tracking-wider text-slate-700 text-left">Detail Barang</th>
+                    <th scope="col" className="px-4 sm:px-6 py-4 text-xs sm:text-sm font-extrabold uppercase tracking-wider text-slate-700 text-left">Detail Barang</th>
                     <SortableHeader columnKey="status" sortConfig={sortConfig} requestSort={requestSort}>Status</SortableHeader>
-                    <th className="relative px-6 py-4 w-24 text-right text-sm font-extrabold uppercase tracking-wider text-slate-700">Aksi</th>
+                    <th className="relative px-4 sm:px-6 py-4 w-24 text-right text-xs sm:text-sm font-extrabold uppercase tracking-wider text-slate-700">Aksi</th>
                 </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-50">
@@ -102,43 +102,42 @@ export const LoanRequestTable: React.FC<LoanRequestTableProps> = ({ requests, on
                           className={`${rowBaseClass} ${bgClass}`}
                         >
                             {/* Column 1: ID & Date */}
-                            <td className="px-6 py-5 align-top">
+                            <td className="px-4 sm:px-6 py-4 sm:py-5 align-top">
                                 <div className="flex flex-col gap-1.5">
-                                    {/* Updated Font: Sans-serif, Bold, Slate-700 */}
-                                    <span className="text-sm font-bold text-slate-800 group-hover:text-tm-primary transition-colors tracking-tight">
+                                    <span className="text-sm font-bold text-slate-800 group-hover:text-tm-primary transition-colors tracking-tight whitespace-nowrap">
                                         {req.id}
                                     </span>
                                     <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
                                         <BsCalendarEvent className="w-3 h-3 text-slate-400" />
-                                        <span>{new Date(req.requestDate).toLocaleDateString("id-ID", { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                        <span className="whitespace-nowrap">{new Date(req.requestDate).toLocaleDateString("id-ID", { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                                     </div>
                                 </div>
                             </td>
 
                             {/* Column 2: Requester */}
-                            <td className="px-6 py-5 align-middle">
+                            <td className="px-4 sm:px-6 py-4 sm:py-5 align-middle">
                                 <div className="flex flex-col">
-                                    <div className="text-sm font-bold text-slate-800">{req.requester}</div>
-                                    <div className="text-xs font-medium text-slate-500 mt-0.5">{req.division}</div>
+                                    <div className="text-sm font-bold text-slate-800 truncate max-w-[120px] sm:max-w-none" title={req.requester}>{req.requester}</div>
+                                    <div className="text-xs font-medium text-slate-500 mt-0.5 truncate max-w-[120px] sm:max-w-none">{req.division}</div>
                                 </div>
                             </td>
 
                             {/* Column 3: Items (Modern Box Badge) */}
-                            <td className="px-6 py-5 align-middle">
+                            <td className="px-4 sm:px-6 py-4 sm:py-5 align-middle">
                                 <div className="flex items-center gap-3">
                                     {/* Count Box */}
-                                    <div className="flex-shrink-0 bg-slate-100 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-xs border border-slate-200 shadow-sm flex flex-col items-center min-w-[3rem]">
-                                         <span className="text-lg leading-none tracking-tight">{req.items.length}</span>
+                                    <div className="flex-shrink-0 bg-slate-100 text-slate-600 font-bold px-2 py-1.5 rounded-lg text-xs border border-slate-200 shadow-sm flex flex-col items-center min-w-[2.5rem]">
+                                         <span className="text-base sm:text-lg leading-none tracking-tight">{req.items.length}</span>
                                          <span className="text-[8px] uppercase tracking-wide opacity-70">Item</span>
                                     </div>
                                     
                                     {/* Item Text */}
-                                    <div className="flex flex-col justify-center">
-                                        <div className="text-sm font-semibold text-slate-800 line-clamp-1 max-w-[180px]" title={req.items[0]?.itemName}>
+                                    <div className="flex flex-col justify-center min-w-0">
+                                        <div className="text-sm font-semibold text-slate-800 line-clamp-1 max-w-[140px] sm:max-w-[180px]" title={req.items[0]?.itemName}>
                                             {req.items[0]?.itemName}
                                         </div>
                                         {req.items.length > 1 ? (
-                                            <span className="text-xs text-slate-500 font-medium">+ {req.items.length - 1} item lainnya</span>
+                                            <span className="text-xs text-slate-500 font-medium whitespace-nowrap">+ {req.items.length - 1} item lainnya</span>
                                         ) : (
                                             <span className="text-xs text-slate-400 font-medium">{req.items[0]?.brand || 'Generic'}</span>
                                         )}
@@ -147,14 +146,14 @@ export const LoanRequestTable: React.FC<LoanRequestTableProps> = ({ requests, on
                             </td>
 
                             {/* Column 4: Status */}
-                            <td className="px-6 py-5 align-middle">
-                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-bold uppercase tracking-wider rounded-full shadow-sm ${getStatusClass(req.status)}`}>
+                            <td className="px-4 sm:px-6 py-4 sm:py-5 align-middle">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider rounded-full shadow-sm whitespace-nowrap ${getStatusClass(req.status)}`}>
                                     {req.status}
                                 </span>
                             </td>
 
                             {/* Column 5: Actions (Hover Reveal - Clean Look) */}
-                            <td className="px-6 py-5 align-middle text-right">
+                            <td className="px-4 sm:px-6 py-4 sm:py-5 align-middle text-right">
                                 {/* Desktop: Show on Hover */}
                                 <div className="hidden sm:flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-x-2 group-hover:translate-x-0">
                                     <button 

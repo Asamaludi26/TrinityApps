@@ -126,7 +126,7 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
             onBack={props.onBackToList}
             headerActions={
                  <div className="flex items-center gap-2">
-                    <button onClick={handlePrint} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border rounded-lg shadow-sm hover:bg-gray-50"><PrintIcon className="w-4 h-4"/> Cetak</button>
+                    <button onClick={handlePrint} className="hidden sm:inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-white border rounded-lg shadow-sm hover:bg-gray-50"><PrintIcon className="w-4 h-4"/> Cetak</button>
                     <button onClick={handleDownloadPdf} disabled={isDownloading} className="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-tm-primary rounded-lg shadow-sm hover:bg-tm-primary-hover disabled:bg-tm-primary/70">{isDownloading ? <SpinnerIcon className="w-4 h-4"/> : <DownloadIcon className="w-4 h-4" />}{isDownloading ? 'Mengunduh...' : 'Unduh PDF'}</button>
                 </div>
             }
@@ -145,14 +145,14 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
             }
         >
             <div className="space-y-8">
-                <div ref={printRef} className="p-8 bg-white border border-gray-200/80 rounded-xl shadow-sm space-y-8">
+                <div ref={printRef} className="p-4 sm:p-8 bg-white border border-gray-200/80 rounded-xl shadow-sm space-y-6 sm:space-y-8">
                     <Letterhead />
                     <div className="text-center">
-                        <h3 className="text-xl font-bold uppercase text-tm-dark">Surat Permintaan Peminjaman Aset</h3>
+                        <h3 className="text-lg sm:text-xl font-bold uppercase text-tm-dark">Surat Permintaan Peminjaman Aset</h3>
                         <p className="text-sm text-tm-secondary">Nomor: {loanRequest.id}</p>
                     </div>
 
-                    <section><dl className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2 text-sm">
+                    <section><dl className="grid grid-cols-1 gap-4 sm:gap-x-8 sm:gap-y-4 md:grid-cols-2 text-sm">
                         <div><label className="block font-medium text-gray-500">Tanggal</label><p className="font-semibold text-gray-800">{new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }).format(new Date(loanRequest.requestDate))}</p></div>
                         <div><label className="block font-medium text-gray-500">Nama Pemohon</label><p className="font-semibold text-gray-800">{loanRequest.requester}</p></div>
                         <div><label className="block font-medium text-gray-500">Divisi</label><p className="font-semibold text-gray-800">{loanRequest.division}</p></div>
@@ -161,8 +161,8 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                     
                     <section>
                         <h4 className="font-semibold text-gray-800 border-b pb-1 mb-2">Detail Aset yang Diminta</h4>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm">
+                        <div className="overflow-x-auto border rounded-lg sm:border-none sm:rounded-none">
+                            <table className="w-full text-left text-sm min-w-[600px] sm:min-w-0">
                                 <thead className="bg-gray-100 text-xs uppercase text-gray-700">
                                     <tr>
                                         <th className="p-2 w-10">No.</th>
@@ -218,8 +218,8 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                     {loanRequest.assignedAssetIds && Object.keys(loanRequest.assignedAssetIds).length > 0 && (
                         <section>
                             <h4 className="font-semibold text-gray-800 border-b pb-1 mb-2">Aset yang Dipinjamkan</h4>
-                            <div className="overflow-x-auto custom-scrollbar">
-                                <table className="w-full text-left text-sm">
+                            <div className="overflow-x-auto custom-scrollbar border rounded-lg sm:border-none sm:rounded-none">
+                                <table className="w-full text-left text-sm min-w-[600px] sm:min-w-0">
                                     <thead className="bg-gray-100 text-xs uppercase text-gray-700">
                                         <tr>
                                             <th className="p-2 w-10">No.</th>
