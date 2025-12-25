@@ -113,6 +113,10 @@ export const AssignmentPanel: React.FC<AssignmentPanelProps> = ({
         let isValid = true;
         const resultItemStatuses: Record<number, any> = {};
         const resultAssignedAssets: Record<number, string[]> = {};
+        
+        // FIXED: Track used IDs across iterations to prevent assigning the same asset to multiple items
+        // (e.g. if there are 2 rows of "Kabel UTP")
+        const usedAssetIds = new Set<string>();
 
         for (const item of request.items) {
             const itemState: ItemState | undefined = itemsState[item.id];
@@ -122,9 +126,18 @@ export const AssignmentPanel: React.FC<AssignmentPanelProps> = ({
                 break;
             }
 
-            const matchingAssets = availableAssets.filter(a => a.name === item.itemName && a.brand === item.brand);
-            const category = assetCategories.find(c => c.name === matchingAssets[0]?.category);
-            const type = category?.types.find(t => t.name === matchingAssets[0]?.type);
+            // Filter assets that match name/brand AND haven't been used in this submit loop yet
+            const matchingAssets = availableAssets.filter(a => 
+                a.name === item.itemName && 
+                a.brand === item.brand &&
+                !usedAssetIds.has(a.id)
+            );
+
+            const category = assetCategories.find(c => c.name === matchingAssets[0]?.category); // Check logic might need robustness if matchingAssets is empty
+            // Fallback lookup if matchingAssets empty (e.g. stock 0)
+            const typeNameFromItem = availableAssets.find(a => a.name === item.itemName)?.type; 
+            const type = category?.types.find(t => t.name === (matchingAssets[0]?.type || typeNameFromItem));
+            
             const isBulk = type?.trackingMethod === 'bulk';
 
             const isReduced = itemState.approvedQty < item.quantity;
@@ -138,11 +151,17 @@ export const AssignmentPanel: React.FC<AssignmentPanelProps> = ({
             if (itemState.approvedQty > 0) {
                 if (isBulk) {
                     if (matchingAssets.length < itemState.approvedQty) {
-                         addNotification(`Stok ${item.itemName} tidak mencukupi.`, 'error');
+                         addNotification(`Stok ${item.itemName} tidak mencukupi (Tersedia: ${matchingAssets.length}, Butuh: ${itemState.approvedQty}).`, 'error');
                          isValid = false;
                          break;
                     }
-                    resultAssignedAssets[item.id] = matchingAssets.slice(0, itemState.approvedQty).map(a => a.id);
+                    
+                    const assigned = matchingAssets.slice(0, itemState.approvedQty).map(a => a.id);
+                    resultAssignedAssets[item.id] = assigned;
+                    
+                    // Mark as used for next iteration
+                    assigned.forEach(id => usedAssetIds.add(id));
+
                 } else {
                     if (itemState.assignedAssets.some(a => !a)) {
                         addNotification(`Harap pilih aset untuk semua slot pada ${item.itemName}.`, 'error');
@@ -155,6 +174,18 @@ export const AssignmentPanel: React.FC<AssignmentPanelProps> = ({
                          isValid = false;
                          break;
                     }
+                    
+                    // Check global collision
+                    for (const id of itemState.assignedAssets) {
+                        if (usedAssetIds.has(id)) {
+                             addNotification(`Aset ${id} sudah digunakan di baris lain.`, 'error');
+                             isValid = false;
+                             break;
+                        }
+                        usedAssetIds.add(id);
+                    }
+                    if (!isValid) break;
+
                     resultAssignedAssets[item.id] = itemState.assignedAssets;
                 }
             }

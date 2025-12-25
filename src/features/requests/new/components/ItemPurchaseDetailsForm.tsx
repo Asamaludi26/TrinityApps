@@ -22,18 +22,24 @@ export const ItemPurchaseDetailsForm: React.FC<ItemPurchaseDetailsFormProps> = (
     const [warrantyEndDate, setWarrantyEndDate] = useState<Date | null>(null);
     const [warrantyPeriod, setWarrantyPeriod] = useState<number | ''>('');
     
-    // Sync state with initialData when it changes
+    // Sync state with initialData when it changes, BUT only if values differ
     useEffect(() => {
         if (initialData) {
-            setPurchasePrice(initialData.purchasePrice ?? '');
-            setVendor(initialData.vendor ?? '');
-            setPoNumber(initialData.poNumber ?? '');
-            setInvoiceNumber(initialData.invoiceNumber ?? '');
-            setPurchaseDate(initialData.purchaseDate ? new Date(initialData.purchaseDate) : new Date());
-            setWarrantyEndDate(initialData.warrantyEndDate ? new Date(initialData.warrantyEndDate) : null);
+            setPurchasePrice(prev => (initialData.purchasePrice !== prev ? (initialData.purchasePrice ?? '') : prev));
+            setVendor(prev => (initialData.vendor !== prev ? (initialData.vendor ?? '') : prev));
+            setPoNumber(prev => (initialData.poNumber !== prev ? (initialData.poNumber ?? '') : prev));
+            setInvoiceNumber(prev => (initialData.invoiceNumber !== prev ? (initialData.invoiceNumber ?? '') : prev));
             
-            // Recalculate warranty period if needed
-            if (initialData.purchaseDate && initialData.warrantyEndDate) {
+            // Dates usually don't cause cursor jumps, but good to sync
+            if (initialData.purchaseDate && (!purchaseDate || new Date(initialData.purchaseDate).getTime() !== purchaseDate.getTime())) {
+                setPurchaseDate(new Date(initialData.purchaseDate));
+            }
+             if (initialData.warrantyEndDate && (!warrantyEndDate || new Date(initialData.warrantyEndDate).getTime() !== warrantyEndDate.getTime())) {
+                setWarrantyEndDate(new Date(initialData.warrantyEndDate));
+            }
+            
+            // Recalculate warranty period if needed (only on mount or external update)
+            if (initialData.purchaseDate && initialData.warrantyEndDate && (!purchaseDate || !warrantyEndDate)) {
                 const start = new Date(initialData.purchaseDate);
                 const end = new Date(initialData.warrantyEndDate);
                 if (end > start) {

@@ -1,19 +1,12 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Dismantle, ItemStatus, Asset, AssetStatus, AssetCondition, Customer, User, ActivityLogEntry, PreviewData, Page, Attachment } from '../../../types';
-import Modal from '../../../components/ui/Modal';
-import { EyeIcon } from '../../../components/icons/EyeIcon';
-import { TrashIcon } from '../../../components/icons/TrashIcon';
 import { useNotification } from '../../../providers/NotificationProvider';
 import { InboxIcon } from '../../../components/icons/InboxIcon';
 import { useSortableData, SortConfig } from '../../../hooks/useSortableData';
-import { SortAscIcon } from '../../../components/icons/SortAscIcon';
-import { SortDescIcon } from '../../../components/icons/SortDescIcon';
-import { SortIcon } from '../../../components/icons/SortIcon';
 import { exportToCSV } from '../../../utils/csvExporter';
-import { ExportIcon } from '../../../components/icons/ExportIcon';
-import { useLongPress } from '../../../hooks/useLongPress';
 import { Checkbox } from '../../../components/ui/Checkbox';
+import { useLongPress } from '../../../hooks/useLongPress';
 import { SpinnerIcon } from '../../../components/icons/SpinnerIcon';
 import { SearchIcon } from '../../../components/icons/SearchIcon';
 import { CloseIcon } from '../../../components/icons/CloseIcon';
@@ -26,6 +19,13 @@ import { CustomSelect } from '../../../components/ui/CustomSelect';
 import DatePicker from '../../../components/ui/DatePicker';
 import { ContentSkeleton } from '../../../components/ui/ContentSkeleton';
 import { FullPageLoader } from '../../../components/ui/FullPageLoader';
+// FIX: Add missing imports for icons and Modal component.
+import { SortIcon } from '../../../components/icons/SortIcon';
+import { SortAscIcon } from '../../../components/icons/SortAscIcon';
+import { SortDescIcon } from '../../../components/icons/SortDescIcon';
+import { EyeIcon } from '../../../components/icons/EyeIcon';
+import { ExportIcon } from '../../../components/icons/ExportIcon';
+import Modal from '../../../components/ui/Modal';
 
 // Stores
 import { useTransactionStore } from '../../../stores/useTransactionStore';

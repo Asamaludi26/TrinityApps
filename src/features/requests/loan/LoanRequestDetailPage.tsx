@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useMemo } from 'react';
-import { LoanRequest, User, Asset, Division, PreviewData, LoanRequestStatus, AssetCategory, ParsedScanResult, Page } from '../../../types';
+import { LoanRequest, User, Asset, Division, PreviewData, LoanRequestStatus, AssetCategory, ParsedScanResult, Page, AssetStatus, AssetCondition, AssetReturnStatus } from '../../../types';
 import { DetailPageLayout } from '../../../components/layout/DetailPageLayout';
 import { Letterhead } from '../../../components/ui/Letterhead';
 import { SignatureStamp } from '../../../components/ui/SignatureStamp';
@@ -19,6 +19,7 @@ import { ReturnSelectionModal } from './components/ReturnSelectionModal';
 
 // Store Import (Required for re-fetching data)
 import { useAssetStore } from '../../../stores/useAssetStore';
+import { useRequestStore } from '../../../stores/useRequestStore';
 
 interface LoanRequestDetailPageProps {
     loanRequest: LoanRequest;
@@ -31,9 +32,7 @@ interface LoanRequestDetailPageProps {
     onShowPreview: (data: PreviewData) => void;
     onAssignAndApprove: (request: LoanRequest, result: { itemStatuses: any, assignedAssetIds: any }) => void;
     onReject: (request: LoanRequest) => void;
-    onConfirmReturn: (request: LoanRequest, assetIds: string[]) => void;
-    onInitiateReturn: (request: LoanRequest) => void;
-    onInitiateHandoverFromLoan: (loanRequest: LoanRequest) => void;
+    onInitiateHandoverFromLoan: (request: LoanRequest) => void;
     isLoading: boolean;
     setIsGlobalScannerOpen: (isOpen: boolean) => void;
     setScanContext: (context: 'global' | 'form') => void;
@@ -42,8 +41,10 @@ interface LoanRequestDetailPageProps {
 }
 
 const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
-    const { loanRequest, currentUser, assets, users, divisions, assetCategories, onAssignAndApprove, setIsGlobalScannerOpen, setScanContext, setFormScanCallback, onConfirmReturn, onInitiateReturn, setActivePage, onShowPreview } = props;
+    const { loanRequest, currentUser, assets, users, divisions, assetCategories, onAssignAndApprove, setIsGlobalScannerOpen, setScanContext, setFormScanCallback, setActivePage, onShowPreview } = props;
     const [isActionSidebarExpanded, setIsActionSidebarExpanded] = useState(true);
+    
+    // Modal Control State
     const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
     
     // NEW STATE for Inline Panel Visibility
@@ -56,6 +57,7 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
     
     // Store Actions
     const fetchAssets = useAssetStore(state => state.fetchAssets);
+    const returns = useRequestStore(state => state.returns);
     
     // Only fetch necessary data for the panel
     const availableAssetsForLoan = useMemo(() => assets.filter(a => a.status === 'Di Gudang'), [assets]);
@@ -81,7 +83,10 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                 const imgData = canvas.toDataURL('image/png');
                 const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
                 const pdfWidth = pdf.internal.pageSize.getWidth();
-                const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+                const canvasWidth = canvas.width;
+                const canvasHeight = canvas.height;
+                const canvasRatio = canvasWidth / canvasHeight;
+                const imgHeight = pdfWidth / canvasRatio;
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgHeight);
                 pdf.save(`LoanRequest-${loanRequest.id}.pdf`);
                 setIsDownloading(false);
@@ -93,14 +98,10 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
     };
     
     const handleOpenAssignment = async () => {
-        // PREVENTION: Race Condition Check
-        // Sebelum membuka panel, kita paksa ambil data terbaru dari server (mock/real)
-        // untuk memastikan Admin tidak melihat aset yang sebenarnya sudah diambil orang lain.
         setIsFetchingAssets(true);
         try {
             await fetchAssets();
             setIsAssignmentPanelOpen(true);
-            // Smooth scroll to panel
             setTimeout(() => {
                 panelRef.current?.scrollIntoView({ behavior: 'smooth' });
             }, 100);
@@ -116,9 +117,18 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
         setIsAssignmentPanelOpen(false);
     };
     
-    const handleOpenReturnModal = () => {
+    const handleOpenReturnRequest = () => {
         setIsReturnModalOpen(true);
-    }
+    };
+
+    const handleOpenReturnApproval = () => {
+        const pendingReturn = returns.find(r => r.loanRequestId === loanRequest.id && r.status === AssetReturnStatus.PENDING_APPROVAL);
+        if (pendingReturn) {
+            setActivePage('return-detail', { returnId: pendingReturn.id });
+        } else {
+            addNotification('Tidak ada pengajuan pengembalian yang menunggu verifikasi untuk pinjaman ini.', 'info');
+        }
+    };
 
     return (
         <DetailPageLayout
@@ -139,8 +149,8 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                     isExpanded={isActionSidebarExpanded} 
                     onToggleVisibility={() => setIsActionSidebarExpanded(p => !p)} 
                     onOpenAssignment={handleOpenAssignment}
-                    onOpenReturnConfirmation={handleOpenReturnModal}
-                    onInitiateReturn={handleOpenReturnModal} // Use modal for requester too!
+                    onOpenReturnConfirmation={handleOpenReturnApproval} // Admin
+                    onInitiateReturn={handleOpenReturnRequest} // Staff
                 />
             }
         >
@@ -235,9 +245,16 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                                             const asset = assets.find(a => a.id === assetId);
                                             if (!asset) return null;
                                             const isReturned = loanRequest.returnedAssetIds?.includes(assetId);
-                                            const category = assetCategories.find(c => c.name === asset.category);
-                                            const type = category?.types.find(t => t.name === asset.type);
-                                            const isBulk = type?.trackingMethod === 'bulk';
+                                            
+                                            // Handle status visual override based on real status
+                                            let statusBadge;
+                                            if (asset.status === AssetStatus.AWAITING_RETURN) {
+                                                 statusBadge = <span className="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded font-semibold border border-orange-200">Menunggu Verifikasi</span>;
+                                            } else if (isReturned || asset.status === AssetStatus.IN_STORAGE) {
+                                                 statusBadge = <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded font-semibold">Dikembalikan</span>;
+                                            } else {
+                                                 statusBadge = <span className="text-xs bg-blue-50 text-blue-800 px-2 py-0.5 rounded">Dipinjam</span>;
+                                            }
 
                                             return (
                                                 <tr key={assetId} className="border-b">
@@ -248,12 +265,10 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                                                         </ClickableLink>
                                                     </td>
                                                     <td className="p-2 font-mono text-gray-600">{assetId}</td>
-                                                    <td className="p-2 font-mono text-gray-600">
-                                                        {isBulk ? '-' : (asset.serialNumber || <i className="text-gray-400">Unit Satuan</i>)}
-                                                    </td>
+                                                    <td className="p-2 font-mono text-gray-600">{asset.serialNumber || '-'}</td>
                                                     <td className="p-2 font-mono text-gray-600">{asset.macAddress || 'N/A'}</td>
                                                     <td className="p-2 text-center">
-                                                        {isReturned ? <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded font-semibold">Dikembalikan</span> : <span className="text-xs bg-blue-50 text-blue-800 px-2 py-0.5 rounded">Dipinjam</span>}
+                                                        {statusBadge}
                                                     </td>
                                                 </tr>
                                             );
@@ -270,20 +285,20 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                         <div><p className="font-semibold text-gray-600">Pemohon,</p><div className="flex items-center justify-center mt-2 h-28"><SignatureStamp signerName={loanRequest.requester} signatureDate={loanRequest.requestDate} signerDivision={getDivisionForUser(loanRequest.requester)} /></div><p className="pt-1 mt-2 border-t border-gray-400">({loanRequest.requester})</p></div>
                         <div><p className="font-semibold text-gray-600">Mengetahui (Admin Logistik),</p><div className="flex items-center justify-center mt-2 h-28">
                             {loanRequest.status === LoanRequestStatus.REJECTED && loanRequest.approver && <RejectionStamp rejectorName={loanRequest.approver} rejectionDate={loanRequest.approvalDate!} />}
+                            {/* FIX: Corrected typo from 'LoanRequestS' to 'LoanRequestStatus' */}
                             {loanRequest.status !== LoanRequestStatus.PENDING && loanRequest.status !== LoanRequestStatus.REJECTED && loanRequest.approver && <ApprovalStamp approverName={loanRequest.approver} approvalDate={loanRequest.approvalDate!} />}
                             {loanRequest.status === LoanRequestStatus.PENDING && <span className="italic text-gray-400">Menunggu Persetujuan</span>}
                         </div><p className="pt-1 mt-2 border-t border-gray-400">({loanRequest.approver || '.........................'})</p></div>
                     </div></section>
                 </div>
 
-                {/* INLINE ASSIGNMENT PANEL */}
                 {isAssignmentPanelOpen && (
                     <div ref={panelRef}>
-                        <AssignmentPanel 
-                            request={loanRequest} 
+                        <AssignmentPanel
+                            request={loanRequest}
                             availableAssets={availableAssetsForLoan}
-                            assetCategories={assetCategories} 
-                            onConfirm={handleAssignmentConfirm} 
+                            assetCategories={assetCategories}
+                            onConfirm={handleAssignmentConfirm}
                             onCancel={() => setIsAssignmentPanelOpen(false)}
                             setIsGlobalScannerOpen={setIsGlobalScannerOpen}
                             setScanContext={setScanContext}
@@ -292,25 +307,21 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                     </div>
                 )}
             </div>
-            
-            <ReturnSelectionModal
-                isOpen={isReturnModalOpen}
-                onClose={() => setIsReturnModalOpen(false)}
-                request={loanRequest}
-                assets={assets}
-                onConfirm={(assetIds) => {
-                    // Logic branching based on role
-                    if (currentUser.role === 'Staff' || currentUser.role === 'Leader') {
-                        // Requester Flow: Immediately initiate return process (Status: AWAITING_RETURN)
-                        // This keeps the user on the current Detail Page instead of navigating to a form.
-                        onInitiateReturn(loanRequest);
-                    } else {
-                        // Admin Flow: Direct confirm/complete return
-                        onConfirmReturn(loanRequest, assetIds);
-                    }
-                    setIsReturnModalOpen(false);
-                }}
-            />
+
+            {isReturnModalOpen && (
+                <ReturnSelectionModal
+                    isOpen={isReturnModalOpen}
+                    onClose={() => setIsReturnModalOpen(false)}
+                    request={loanRequest}
+                    assets={assets}
+                    targetStatus={AssetStatus.IN_USE}
+                    title="Ajukan Pengembalian Aset"
+                    onConfirm={(assetIds) => {
+                        setIsReturnModalOpen(false);
+                        setActivePage('return-form', { loanId: loanRequest.id, assetIds: assetIds });
+                    }}
+                />
+            )}
         </DetailPageLayout>
     );
 };

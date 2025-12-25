@@ -235,7 +235,6 @@ const AppContent: React.FC = () => {
       case "return-form": {
         const loanRequestForReturn = useRequestStore.getState().loanRequests.find(lr => lr.id === pageInitialState?.loanId);
         
-        // Handle single or multiple assets
         let assetsToReturn: Asset[] = [];
         if (pageInitialState?.assetIds && Array.isArray(pageInitialState.assetIds)) {
              assetsToReturn = useAssetStore.getState().assets.filter(a => pageInitialState.assetIds.includes(a.id));
@@ -250,6 +249,7 @@ const AppContent: React.FC = () => {
                 onCancel={() => setActivePage('request-pinjam', { openDetailForId: loanRequestForReturn?.id })}
                 loanRequest={loanRequestForReturn}
                 assetsToReturn={assetsToReturn}
+                onShowPreview={handleShowPreview}
              />
         );
       }
@@ -257,7 +257,14 @@ const AppContent: React.FC = () => {
       case "return-detail": {
           const returnDocument = useRequestStore.getState().returns.find(r => r.id === pageInitialState?.returnId);
           const loanRequestForDetail = returnDocument ? useRequestStore.getState().loanRequests.find(lr => lr.id === returnDocument.loanRequestId) : undefined;
-          const assetForDetail = returnDocument ? useAssetStore.getState().assets.find(a => a.id === returnDocument.assetId) : undefined;
+          
+          // Find all assets associated with the return doc number
+          const assetsForReturnDoc = returnDocument 
+                ? useRequestStore.getState().returns
+                    .filter(r => r.docNumber === returnDocument.docNumber)
+                    .map(r => useAssetStore.getState().assets.find(a => a.id === r.assetId))
+                    .filter((a): a is Asset => a !== undefined)
+                : [];
           
           return (
               <ReturnAssetFormPage
@@ -266,7 +273,8 @@ const AppContent: React.FC = () => {
                 isReadOnly={true}
                 returnDocument={returnDocument}
                 loanRequest={loanRequestForDetail}
-                assetsToReturn={assetForDetail ? [assetForDetail] : []}
+                assetsToReturn={assetsForReturnDoc}
+                onShowPreview={handleShowPreview}
               />
           );
       }

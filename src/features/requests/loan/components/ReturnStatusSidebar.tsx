@@ -16,6 +16,7 @@ interface ReturnStatusSidebarProps {
     onToggleVisibility: () => void;
     onApprove: () => void;
     onReject: () => void;
+    isApprovalMode?: boolean;
 }
 
 const ReturnStatusIndicator: React.FC<{ status: AssetReturnStatus }> = ({ status }) => {
@@ -35,7 +36,7 @@ const ReturnStatusIndicator: React.FC<{ status: AssetReturnStatus }> = ({ status
 };
 
 export const ReturnStatusSidebar: React.FC<ReturnStatusSidebarProps> = ({ 
-    returnDocument, currentUser, isLoading, onApprove, onReject, isExpanded, onToggleVisibility 
+    returnDocument, currentUser, isLoading, onApprove, onReject, isExpanded, onToggleVisibility, isApprovalMode
 }) => {
     
     if (!isExpanded) {
@@ -79,7 +80,7 @@ export const ReturnStatusSidebar: React.FC<ReturnStatusSidebarProps> = ({
                             <p className="font-semibold mb-1">Verifikasi Kondisi Aset</p>
                             <p>Pastikan fisik aset telah diterima dan kondisi sesuai dengan laporan ({returnDocument.returnedCondition}) sebelum menyetujui.</p>
                         </div>
-                        <ActionButton onClick={onApprove} disabled={isLoading} text="Terima & Setujui" icon={CheckIcon} color="success" />
+                        <ActionButton onClick={onApprove} disabled={isLoading} text={isApprovalMode ? "Konfirmasi Penerimaan" : "Terima & Setujui"} icon={CheckIcon} color="success" />
                         <ActionButton onClick={onReject} disabled={isLoading} text="Tolak Pengembalian" icon={CloseIcon} color="danger" />
                     </>
                 ) : (

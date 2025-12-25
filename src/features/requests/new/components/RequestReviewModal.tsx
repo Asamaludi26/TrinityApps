@@ -7,6 +7,7 @@ import { InfoIcon } from '../../../../components/icons/InfoIcon';
 import { CheckIcon } from '../../../../components/icons/CheckIcon';
 import { CloseIcon } from '../../../../components/icons/CloseIcon';
 import { PencilIcon } from '../../../../components/icons/PencilIcon';
+import { BsArrowRight } from 'react-icons/bs';
 
 export interface AdjustmentData {
   approvedQuantity: number;
@@ -27,25 +28,24 @@ export const RequestReviewModal: React.FC<RequestReviewModalProps> = ({ isOpen, 
   const [itemActions, setItemActions] = useState<Record<number, ItemAction>>({});
   const [adjustments, setAdjustments] = useState<Record<number, { approvedQuantity: string; reason: string }>>({});
 
-  // Helper untuk mendapatkan batas maksimal kuantitas saat ini
+  // Helper untuk mendapatkan batas maksimal kuantitas berdasarkan TAHAP saat ini
   const getMaxAllowedQty = (itemId: number) => {
     const item = request.items.find(i => i.id === itemId);
     if (!item) return 0;
     
-    // FIX LOGIC: Cegah "Self-Lockout".
-    // Jika status masih di tahap awal (PENDING atau LOGISTIC_APPROVED), 
-    // Admin Logistik harus bisa merevisi kembali ke jumlah permintaan ASLI user (item.quantity),
-    // meskipun dia sebelumnya sudah memotong jumlahnya.
-    // Ceiling hanya berlaku ketat jika request sudah naik ke tahap Purchase/CEO (AWAITING_CEO_APPROVAL dll).
-    if (request.status === ItemStatus.PENDING || request.status === ItemStatus.LOGISTIC_APPROVED) {
+    // 1. Jika ini tahap pertama (Logistik Review), batasnya adalah permintaan User Asli
+    if (request.status === ItemStatus.PENDING) {
         return item.quantity;
     }
 
+    // 2. Jika ini tahap Purchase atau CEO, batasnya adalah hasil approval TAHAP SEBELUMNYA.
+    // Data ini tersimpan di itemStatuses.approvedQuantity dari proses save sebelumnya.
     const existingStatus = request.itemStatuses?.[itemId];
-    // Jika ada history approval dari tahap sebelumnya, gunakan itu sebagai atap (ceiling).
     if (existingStatus && typeof existingStatus.approvedQuantity === 'number') {
         return existingStatus.approvedQuantity;
     }
+
+    // Fallback ke quantity asli jika tidak ada history (safety)
     return item.quantity;
   };
 
@@ -55,13 +55,18 @@ export const RequestReviewModal: React.FC<RequestReviewModalProps> = ({ isOpen, 
       const initialAdjustments: Record<number, { approvedQuantity: string; reason: string }> = {};
 
       request.items.forEach((item) => {
-        // Ambil kuantitas efektif saat ini
+        // Ambil kuantitas efektif (hasil approval tahap sebelumnya atau original)
         const effectiveQty = getMaxAllowedQty(item.id);
 
-        // 1. Selalu reset ke kondisi "Penuh" (Approve) berdasarkan effectiveQty
-        initialActions[item.id] = "approve";
+        // 1. Selalu reset ke kondisi "Penuh" (Approve) berdasarkan effectiveQty tahap ini
+        // Jika tahap sebelumnya sudah reject (0), maka tahap ini defaultnya juga reject/0.
+        if (effectiveQty === 0) {
+            initialActions[item.id] = "reject";
+        } else {
+            initialActions[item.id] = "approve";
+        }
 
-        // 2. Isi nilai dengan effectiveQty, dan KOSONGKAN alasan agar fresh untuk approver ini
+        // 2. Isi nilai dengan effectiveQty sebagai default form
         initialAdjustments[item.id] = { 
             approvedQuantity: effectiveQty.toString(), 
             reason: "" 
@@ -78,7 +83,7 @@ export const RequestReviewModal: React.FC<RequestReviewModalProps> = ({ isOpen, 
 
     if (field === "approvedQuantity") {
       const numValue = value === "" ? NaN : parseInt(value, 10);
-      // Validasi: Tidak boleh negatif, tidak boleh melebihi maxQty
+      // Validasi: Tidak boleh negatif, tidak boleh melebihi maxQty (plafon tahap ini)
       if (!isNaN(numValue) && (numValue < 0 || numValue > maxQty)) return; 
     }
 
@@ -101,7 +106,7 @@ export const RequestReviewModal: React.FC<RequestReviewModalProps> = ({ isOpen, 
         // Jika partial, set default ke (max - 1) atau minimal 1
         newQty = Math.max(1, maxQty - 1);
     } else if (action === "approve") {
-        // Jika klik penuh, kembalikan ke maxQty
+        // Jika klik penuh, kembalikan ke maxQty (sesuai tahap ini)
         newQty = maxQty;
     }
 
@@ -119,9 +124,12 @@ export const RequestReviewModal: React.FC<RequestReviewModalProps> = ({ isOpen, 
   const isSubmissionValid = useMemo(() => {
     return request.items.every(item => {
       const adj = adjustments[item.id];
+      // Jika item sudah di-reject dari tahap sebelumnya (maxQty 0), kita skip validasi
+      if (getMaxAllowedQty(item.id) === 0) return true;
+
       if (!adj || adj.approvedQuantity === "") return false;
       const action = itemActions[item.id];
-      // Jika action bukan approve (artinya ada perubahan/penolakan baru), alasan wajib diisi
+      // Jika action bukan approve (artinya ada perubahan/penolakan baru di tahap ini), alasan wajib diisi
       if (action !== 'approve' && adj.reason.trim().length < 3) return false;
       return true;
     });
@@ -185,10 +193,29 @@ export const RequestReviewModal: React.FC<RequestReviewModalProps> = ({ isOpen, 
             const adj = adjustments[item.id];
             const isModified = action !== 'approve';
             
-            // Logic Batas Maksimal Per Item
+            // Logic Batas Maksimal Per Item (Cascading)
             const maxQty = getMaxAllowedQty(item.id);
-            const isReducedFromOriginal = maxQty < item.quantity;
+            const originalUserQty = item.quantity;
+            
+            // Cek apakah item ini SUDAH dikurangi oleh approver sebelumnya
+            const isReducedPreviously = maxQty < originalUserQty;
             const canPartial = maxQty > 1;
+            const isPreviouslyRejected = maxQty === 0;
+
+            if (isPreviouslyRejected) {
+                return (
+                    <div key={item.id} className="p-4 border-2 border-slate-100 bg-slate-50 rounded-2xl opacity-70">
+                         <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <h4 className="font-black text-slate-500 text-base line-through">{item.itemName}</h4>
+                                <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-red-100 text-red-600 rounded border border-red-200">SUDAH DITOLAK SEBELUMNYA</span>
+                            </div>
+                            <div className="text-xs text-slate-400 font-bold">Qty: 0</div>
+                         </div>
+                         <p className="text-xs text-slate-400 mt-2 italic">Item ini telah ditolak pada tahap approval sebelumnya dan tidak dapat diproses.</p>
+                    </div>
+                );
+            }
 
             return (
               <div 
@@ -205,15 +232,15 @@ export const RequestReviewModal: React.FC<RequestReviewModalProps> = ({ isOpen, 
                       <h4 className="font-black text-slate-900 text-base leading-tight truncate">{item.itemName}</h4>
                       <span className="px-2 py-0.5 text-[9px] font-black uppercase bg-slate-200 text-slate-700 rounded border border-slate-300">{item.itemTypeBrand}</span>
                     </div>
-                    <div className="text-sm text-slate-600 font-bold">
-                      Permintaan Awal: <span className="text-slate-900 font-black">{item.quantity} Unit</span>
-                      {isReducedFromOriginal && request.status !== ItemStatus.PENDING && request.status !== ItemStatus.LOGISTIC_APPROVED && (
-                          <div className="mt-1 flex items-center gap-2">
-                              <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200 inline-flex items-center gap-1">
-                                 <InfoIcon className="w-3 h-3"/>
-                                 Batas Max: {maxQty} Unit (Revisi Sebelumnya)
-                              </span>
+                    
+                    <div className="text-sm text-slate-600 font-bold flex flex-col gap-1">
+                      {isReducedPreviously ? (
+                          <div className="flex items-center gap-2 text-amber-700">
+                             <span>Permintaan Tahap Ini: <span className="text-slate-900 font-black text-lg">{maxQty} Unit</span></span>
+                             <span className="text-[10px] bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200">(Direvisi dari {originalUserQty})</span>
                           </div>
+                      ) : (
+                          <span>Permintaan Awal: <span className="text-slate-900 font-black">{item.quantity} Unit</span></span>
                       )}
                     </div>
                   </div>
@@ -226,7 +253,7 @@ export const RequestReviewModal: React.FC<RequestReviewModalProps> = ({ isOpen, 
                         ${action === 'approve' ? 'bg-white text-emerald-700 shadow-md ring-1 ring-black/5' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                       {action === 'approve' && <CheckIcon className="w-3.5 h-3.5" />}
-                      PENUH ({maxQty})
+                      SETUJUI ({maxQty})
                     </button>
                     <button 
                       onClick={() => handleActionChange(item.id, 'partial')} 
@@ -256,7 +283,7 @@ export const RequestReviewModal: React.FC<RequestReviewModalProps> = ({ isOpen, 
                     <div className="flex items-center justify-between mb-4">
                       <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Kuantitas Disetujui</label>
                       <div className="flex items-center gap-2">
-                        {/* FIX: Menambahkan Input Angka Manual untuk Presisi */}
+                        {/* Input Angka Manual untuk Presisi */}
                         <input
                             type="number"
                             min="1"
@@ -271,16 +298,17 @@ export const RequestReviewModal: React.FC<RequestReviewModalProps> = ({ isOpen, 
                     <div className="relative flex items-center gap-4 px-1">
                       <span className="text-[10px] font-black text-slate-500">1</span>
                       <input 
-                        type="range" min="1" max={maxQty - 1} value={adj?.approvedQuantity || 1} 
+                        type="range" min="1" max={maxQty - 1} value={parseInt(adj?.approvedQuantity) || 1} 
                         onChange={e => handleAdjustmentChange(item.id, 'approvedQuantity', e.target.value)}
                         className="flex-1 h-2.5 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-tm-primary transition-all hover:bg-slate-400"
                       />
                       <span className="text-[10px] font-black text-slate-500">{maxQty - 1}</span>
                     </div>
                     {/* Visual Helper */}
-                    <p className="text-[10px] text-center text-slate-400 font-bold mt-2 uppercase tracking-wide">
-                        Maksimal Revisi: {maxQty - 1}
-                    </p>
+                    <div className="flex justify-center items-center gap-2 mt-2">
+                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Maksimal Revisi: {maxQty - 1}</span>
+                         {isReducedPreviously && <span className="text-[10px] text-amber-600 font-bold">(Sudah dikurangi dari {originalUserQty})</span>}
+                    </div>
                   </div>
                 )}
 

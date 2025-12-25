@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { Asset, AssetCategory, StockMovement, MovementType, ActivityLogEntry } from '../types';
 import * as api from '../services/api';
@@ -13,6 +12,7 @@ interface AssetState {
   fetchAssets: () => Promise<void>;
   addAsset: (asset: Asset) => Promise<void>;
   updateAsset: (id: string, data: Partial<Asset>) => Promise<void>;
+  updateAssetBatch: (ids: string[], data: Partial<Asset>) => Promise<void>; // NEW: Bulk Update
   deleteAsset: (id: string) => Promise<void>;
   
   updateCategories: (categories: AssetCategory[]) => Promise<void>;
@@ -51,7 +51,6 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     set({ isLoading: true });
     try {
       const data = await api.fetchAllData();
-      // In real mode, you might need separate calls if fetchAllData isn't aggregated
       set({ 
           assets: data.assets, 
           categories: data.assetCategories, 
@@ -66,12 +65,9 @@ export const useAssetStore = create<AssetState>((set, get) => ({
 
   addAsset: async (rawAsset) => {
     const asset = sanitizeBulkAsset(rawAsset, get().categories) as Asset;
-    // Call API (Generic update for mock, specific create for real)
-    // For Mock Mode simplicity in this refactor, we stick to updating the whole list via generic helper
-    // In a full migration, api.createAsset(asset) should be defined.
     const current = get().assets;
     const updated = [asset, ...current];
-    await api.updateData('app_assets', updated); // Using generic for mock compatibility
+    await api.updateData('app_assets', updated); 
     set({ assets: updated });
     
     // Auto-record movement for new items
@@ -96,18 +92,6 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     if (!originalAsset) return;
 
     const data = sanitizeBulkAsset(rawData, get().categories, originalAsset);
-    
-    // --- AUTO LOGGING LOGIC (Can move to backend) ---
-    const changes: string[] = [];
-    let actionType = 'Update Data';
-    if (data.status && data.status !== originalAsset.status) {
-        changes.push(`Status: ${originalAsset.status} ➔ ${data.status}`);
-        actionType = 'Perubahan Status';
-    }
-    // ... other logging logic ...
-    
-    // In Real Backend, this logic happens on server.
-    // For Mock, we do it here or in API layer.
     
     const updated = current.map(a => a.id === id ? { ...a, ...data } : a);
     await api.updateData('app_assets', updated);
@@ -138,6 +122,20 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     }
   },
 
+  // NEW: Bulk Update Action
+  // Backend Equivalent: PATCH /api/assets/bulk { ids: [], data: {} }
+  updateAssetBatch: async (ids, rawData) => {
+      const current = get().assets;
+      const updated = current.map(a => {
+          if (ids.includes(a.id)) {
+              return { ...a, ...rawData };
+          }
+          return a;
+      });
+      await api.updateData('app_assets', updated);
+      set({ assets: updated });
+  },
+
   deleteAsset: async (id) => {
     const current = get().assets;
     const assetToDelete = current.find(a => a.id === id);
@@ -164,16 +162,12 @@ export const useAssetStore = create<AssetState>((set, get) => ({
       set({ categories });
   },
 
-  // Refactored: Call API and set state from result
   recordMovement: async (movementData) => {
-      // api.recordStockMovement handles the heavy lifting (calculation)
-      // returns the FULL updated list of movements
       const updatedMovements = await api.recordStockMovement(movementData);
       set({ stockMovements: updatedMovements as StockMovement[] });
   },
 
   getStockHistory: (name, brand) => {
-      // Simple filter on local state (which is synced via recordMovement response)
       return get().stockMovements
         .filter(m => m.assetName === name && m.brand === brand)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());

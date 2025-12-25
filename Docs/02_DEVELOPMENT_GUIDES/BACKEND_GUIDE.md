@@ -108,3 +108,52 @@ async registerAssetsFromRequest(requestId: string, payload: RegisterAssetDto) {
   });
 }
 ```
+
+### 6.7. Alur Pengembalian Aset (Asset Returns)
+
+Proses pengembalian aset harus ditangani secara transaksional untuk memastikan integritas antara status aset dan dokumen pinjaman.
+
+**Endpoint:** `POST /api/loans/:id/return-batch`
+
+**Deskripsi:** Memproses konfirmasi pengembalian aset dalam jumlah banyak sekaligus.
+
+**Payload:**
+```json
+{
+  "loanId": "LREQ-001",
+  "acceptedAssetIds": ["AST-001", "AST-002"],
+  "rejectedAssetIds": ["AST-003"] // Opsional (jika ada yang ditolak karena rusak parah/hilang)
+}
+```
+
+**Implementasi Backend (Prisma Transaction):**
+```typescript
+async processReturnBatch(payload: ReturnBatchDto) {
+  return this.prisma.$transaction(async (tx) => {
+    // 1. Update Asset Statuses (Accepted -> Storage)
+    await tx.asset.updateMany({
+      where: { id: { in: payload.acceptedAssetIds } },
+      data: { status: 'IN_STORAGE', currentUser: null, location: 'Gudang' }
+    });
+
+    // 2. Update Asset Statuses (Rejected/Skipped -> Back to User/In Use)
+    if (payload.rejectedAssetIds.length > 0) {
+        await tx.asset.updateMany({
+             where: { id: { in: payload.rejectedAssetIds } },
+             data: { status: 'IN_USE' } // Reset status
+        });
+    }
+
+    // 3. Update Asset Return Documents
+    // (Update status dokumen pengajuan pengembalian menjadi APPROVED/REJECTED)
+    
+    // 4. Update Loan Request Status
+    // Cek apakah semua item dalam pinjaman sudah kembali?
+    // Jika ya, update LoanRequest.status = 'RETURNED'
+    // Jika tidak, biarkan 'ON_LOAN'
+    
+    // 5. Create Handover (Bukti Terima)
+    // Buat satu dokumen Handover untuk semua item yang diterima.
+  });
+}
+```

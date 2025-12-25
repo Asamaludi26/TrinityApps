@@ -1,6 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
-import { Page, User, LoanRequest, LoanRequestStatus, ItemStatus, AssetStatus, Handover, AssetCategory, LoanItem, ParsedScanResult } from '../../../types';
+import React, { useState, useEffect, useMemo } from 'react';
+// FIX: Add AssetCondition to imports to resolve type error on line 230.
+import { Page, User, LoanRequest, LoanRequestStatus, ItemStatus, AssetStatus, Handover, AssetCategory, LoanItem, ParsedScanResult, AssetReturn, AssetReturnStatus, AssetCondition } from '../../../types';
 import { useNotification } from '../../../providers/NotificationProvider';
 import Modal from '../../../components/ui/Modal';
 import { generateDocumentNumber } from '../../../utils/documentNumberGenerator';
@@ -9,6 +10,7 @@ import { generateDocumentNumber } from '../../../utils/documentNumberGenerator';
 import { LoanRequestForm } from './components/LoanRequestForm';
 import LoanRequestDetailPage from './LoanRequestDetailPage';
 import { LoanRequestListView } from './components/LoanRequestListView';
+import { ReturnRequestListView } from './components/ReturnRequestListView';
 
 // Stores
 import { useRequestStore } from '../../../stores/useRequestStore';
@@ -51,16 +53,12 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     const returns = useRequestStore((state) => state.returns);
     const addLoanRequest = useRequestStore((state) => state.addLoanRequest);
     const updateLoanRequest = useRequestStore((state) => state.updateLoanRequest);
-    const approveLoanRequest = useRequestStore((state) => state.approveLoanRequest); // NEW ACTION
+    const approveLoanRequest = useRequestStore((state) => state.approveLoanRequest); 
     const fetchRequests = useRequestStore((state) => state.fetchRequests);
 
     const assets = useAssetStore((state) => state.assets);
     const assetCategories = useAssetStore((state) => state.categories);
-    const updateAsset = useAssetStore((state) => state.updateAsset);
     const fetchAssets = useAssetStore((state) => state.fetchAssets);
-
-    const handovers = useTransactionStore((state) => state.handovers);
-    const addHandover = useTransactionStore((state) => state.addHandover);
     
     const users = useMasterDataStore((state) => state.users);
     const divisions = useMasterDataStore((state) => state.divisions);
@@ -81,6 +79,7 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     }, []);
 
     const [view, setView] = useState<'list' | 'form' | 'detail'>('list');
+    const [activeTab, setActiveTab] = useState<'loans' | 'returns'>('loans');
     const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);
     
     // UI States managed here for Actions
@@ -94,6 +93,10 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     useEffect(() => {
         if (highlightedItemId) {
             setHighlightedId(highlightedItemId);
+            // Switch to the correct tab if highlighting a return
+            if (highlightedItemId.startsWith('RET-')) {
+                setActiveTab('returns');
+            }
             clearHighlightOnReturn();
             
             const element = document.getElementById(`request-row-${highlightedItemId}`);
@@ -110,26 +113,20 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     // Deep Linking via Filters
     useEffect(() => {
         if (initialFilters?.openDetailForId) {
-            const request = loanRequests.find(req => req.id === initialFilters.openDetailForId);
-            if (request) {
-                if (initialFilters.preselectReturnAssetId) {
-                    setActivePage('return-form', {
-                        loanId: request.id,
-                        assetId: initialFilters.preselectReturnAssetId
-                    });
-                } else {
+            if (initialFilters.openDetailForId.startsWith('LREQ-')) {
+                const request = loanRequests.find(req => req.id === initialFilters.openDetailForId);
+                if (request) {
                     setSelectedRequest(request);
                     setView('detail');
                 }
             }
         }
-    }, [initialFilters, loanRequests, setActivePage]);
+    }, [initialFilters, loanRequests]);
 
 
     // --- ACTION HANDLERS ---
 
     const handleCreateRequest = async (data: { loanItems: LoanItem[]; notes: string; }) => {
-        // Wrap in Try-Catch for backend integration readiness
         try {
             const userDivision = divisions.find(d => d.id === currentUser.divisionId)?.name || 'N/A';
             const newRequest: LoanRequest = {
@@ -166,7 +163,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
     const handleAssignAndApprove = async (request: LoanRequest, result: { itemStatuses: any, assignedAssetIds: any }) => {
         setIsLoading(true);
         try {
-            // REFACTOR: Use the atomic transaction action
             await approveLoanRequest(request.id, {
                 approver: currentUser.name,
                 approvalDate: new Date().toISOString(),
@@ -174,7 +170,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                 itemStatuses: result.itemStatuses
             });
             
-            // Re-fetch to get latest state from store (which was updated by action)
             const updatedReq = useRequestStore.getState().loanRequests.find(r => r.id === request.id);
             if (updatedReq) setSelectedRequest(updatedReq);
             
@@ -215,124 +210,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
         }
     };
     
-    const handleConfirmReturn = async (request: LoanRequest, assetIds: string[]) => {
-        setIsLoading(true);
-        try {
-            const currentReturnedIds = request.returnedAssetIds || [];
-            const newReturnedIds = [...new Set([...currentReturnedIds, ...assetIds])];
-
-            const allAssignedIds = Object.values(request.assignedAssetIds || {}).flat();
-            const isFullyReturned = allAssignedIds.every(id => newReturnedIds.includes(id));
-
-            const now = new Date();
-            const handoverDate = new Date(); 
-            const handoverDocNumber = generateDocumentNumber('HO-RET', handovers, handoverDate);
-            const handoverId = `HO-${String(handovers.length + 1).padStart(3, '0')}`;
-
-            // Generate Handover Item
-            const returnedAssets = assets.filter(a => assetIds.includes(a.id));
-            const handoverItems = returnedAssets.map(asset => ({
-                id: Date.now() + Math.random(),
-                assetId: asset.id,
-                itemName: asset.name,
-                itemTypeBrand: asset.brand,
-                conditionNotes: asset.condition || 'Dikembalikan dari Peminjaman',
-                quantity: 1,
-                checked: true,
-            }));
-
-            // Create Handover Record
-            const newHandover: Handover = {
-                id: handoverId,
-                docNumber: handoverDocNumber,
-                handoverDate: handoverDate.toISOString().split('T')[0],
-                menyerahkan: request.requester, 
-                penerima: currentUser.name, 
-                mengetahui: 'N/A', 
-                woRoIntNumber: request.id,
-                items: handoverItems,
-                status: ItemStatus.COMPLETED,
-            };
-
-            await addHandover(newHandover);
-
-            await updateLoanRequest(request.id, { 
-                status: isFullyReturned ? LoanRequestStatus.RETURNED : LoanRequestStatus.ON_LOAN, 
-                actualReturnDate: isFullyReturned ? now.toISOString() : request.actualReturnDate,
-                returnedAssetIds: newReturnedIds
-            });
-
-            // Update Asset Statuses (Optimized with Promise.all)
-            const updatePromises = assetIds.map(assetId => {
-                const currentAsset = assets.find(a => a.id === assetId);
-                const targetStatus = (currentAsset?.status === AssetStatus.DAMAGED) 
-                    ? AssetStatus.DAMAGED 
-                    : AssetStatus.IN_STORAGE;
-
-                return updateAsset(assetId, { 
-                    status: targetStatus, 
-                    currentUser: null, 
-                    location: 'Gudang Inventori' 
-                });
-            });
-
-            await Promise.all(updatePromises);
-            
-            // Force refresh data
-            await fetchRequests();
-            await fetchAssets();
-            
-            addNotificationUI(isFullyReturned ? `Semua aset untuk ${request.id} telah dikembalikan. Handover #${newHandover.docNumber} dibuat.` : `Aset telah dikembalikan. Handover #${newHandover.docNumber} dibuat.`, 'success');
-            
-            setSelectedRequest(null);
-            setView('list');
-            
-        } catch(e) {
-             addNotificationUI('Gagal memproses pengembalian.', 'error');
-             console.error(e);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleInitiateReturn = async (request: LoanRequest) => {
-        setIsLoading(true);
-        try {
-            // 1. Update Loan Request Status
-            await updateLoanRequest(request.id, { status: LoanRequestStatus.AWAITING_RETURN });
-            
-            // 2. Update ALL assigned assets status to AWAITING_RETURN
-            const allAssignedIds = Object.values(request.assignedAssetIds || {}).flat();
-            const assetsToUpdate = allAssignedIds.filter(id => !(request.returnedAssetIds || []).includes(id));
-
-            await Promise.all(assetsToUpdate.map(assetId => 
-                updateAsset(assetId, { status: AssetStatus.AWAITING_RETURN })
-            ));
-
-            // 3. Notify Admins
-            const logisticAdmins = users.filter(u => u.role === 'Admin Logistik');
-            logisticAdmins.forEach(admin => {
-                addAppNotification({ 
-                    recipientId: admin.id,
-                    actorName: currentUser.name,
-                    type: 'STATUS_CHANGE', 
-                    referenceId: request.id,
-                    message: `memulai pengembalian untuk #${request.id}`
-                });
-            });
-            
-            await fetchRequests();
-            await fetchAssets();
-
-            addNotificationUI('Proses pengembalian telah dimulai. Admin akan mengkonfirmasi penerimaan aset.', 'success');
-            setSelectedRequest(prev => prev ? ({...prev, status: LoanRequestStatus.AWAITING_RETURN}) : null);
-        } catch (e) {
-            addNotificationUI('Gagal memulai pengembalian.', 'error');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     const renderContent = () => {
         if (view === 'form') {
             return (
@@ -365,8 +242,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                 onShowPreview={onShowPreview} 
                 onAssignAndApprove={handleAssignAndApprove} 
                 onReject={() => setIsRejectModalOpen(true)} 
-                onConfirmReturn={handleConfirmReturn} 
-                onInitiateReturn={handleInitiateReturn}
                 onInitiateHandoverFromLoan={onInitiateHandoverFromLoan} 
                 isLoading={isLoading}
                 setIsGlobalScannerOpen={setIsGlobalScannerOpen}
@@ -376,18 +251,41 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                  />;
         }
         
+        // REFACTORED LIST VIEW WITH TABS
         return (
-            <LoanRequestListView 
-                currentUser={currentUser}
-                loanRequests={loanRequests}
-                returns={returns}
-                divisions={divisions}
-                setActivePage={setActivePage}
-                onCreateClick={() => setView('form')}
-                onDetailClick={(req) => { setSelectedRequest(req); setView('detail'); }}
-                onReturnDetailClick={(ret) => setActivePage('return-detail', { returnId: ret.id })}
-                highlightedId={highlightedId}
-            />
+            <div className="p-4 sm:p-6 md:p-8">
+                <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6">
+                    <h1 className="text-3xl font-bold text-tm-dark">Request Peminjaman & Pengembalian</h1>
+                    <button onClick={() => setView('form')} className="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 rounded-lg shadow-sm bg-tm-primary hover:bg-tm-primary-hover">
+                        Buat Request Pinjam
+                    </button>
+                </div>
+                
+                <div className="mb-6 border-b border-gray-200">
+                    <nav className="flex -mb-px space-x-6" aria-label="Tabs">
+                        <button onClick={() => setActiveTab('loans')} className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'loans' ? 'border-tm-primary text-tm-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Request Peminjaman</button>
+                        <button onClick={() => setActiveTab('returns')} className={`py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'returns' ? 'border-tm-primary text-tm-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Request Pengembalian</button>
+                    </nav>
+                </div>
+
+                {activeTab === 'loans' ? (
+                    <LoanRequestListView 
+                        currentUser={currentUser}
+                        loanRequests={loanRequests}
+                        divisions={divisions}
+                        setActivePage={setActivePage}
+                        onDetailClick={(req) => { setSelectedRequest(req); setView('detail'); }}
+                        highlightedId={highlightedId}
+                    />
+                ) : (
+                    <ReturnRequestListView 
+                        currentUser={currentUser}
+                        returns={returns}
+                        divisions={divisions}
+                        onDetailClick={(ret) => setActivePage('return-detail', { returnId: ret.id })}
+                    />
+                )}
+            </div>
         );
     };
 

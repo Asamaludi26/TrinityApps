@@ -256,13 +256,38 @@ const HandoverForm: React.FC<{
         }
     }, [assets, isFromRequest, menyerahkan, currentUser.role]);
 
+    // REFACTOR: Enhance assetOptions to ensure assigned assets from LoanRequest are visible
+    // even if their status isn't perfectly 'IN_STORAGE' at this micro-second in the flow.
     const assetOptions = useMemo(() => {
         const prefilledAssetId = (prefillData && 'id' in prefillData && !isFromRequest) ? (prefillData as Asset).id : null;
+        
+        // Handle Loan Request Assets specifically
+        let assignedAssetIds: string[] = [];
+        if (prefillData && 'assignedAssetIds' in prefillData) {
+            const loanReq = prefillData as LoanRequest;
+            if (loanReq.assignedAssetIds) {
+                assignedAssetIds = Object.values(loanReq.assignedAssetIds).flat();
+            }
+        }
+
         const optionAssets = [...availableAssetsForSelection];
+        
+        // Ensure Single Prefilled Asset is present
         if (prefilledAssetId && !optionAssets.some(a => a.id === prefilledAssetId)) {
             const prefilledAsset = assets.find(a => a.id === prefilledAssetId);
             if (prefilledAsset) optionAssets.push(prefilledAsset);
         }
+
+        // Ensure Loan Request Assigned Assets are present
+        if (assignedAssetIds.length > 0) {
+            const loanAssets = assets.filter(a => assignedAssetIds.includes(a.id));
+            loanAssets.forEach(a => {
+                if (!optionAssets.some(oa => oa.id === a.id)) {
+                    optionAssets.push(a);
+                }
+            });
+        }
+
         return optionAssets.map(asset => {
             let labelSuffix = '';
             if (asset.status === AssetStatus.IN_STORAGE) labelSuffix = ' - Di Gudang';
@@ -297,10 +322,11 @@ const HandoverForm: React.FC<{
         if (ceo) setMengetahui(ceo.name);
     }, [ceo]);
 
+    // REFACTOR: Logic for pre-filling items based on LoanRequest assigned assets
     useEffect(() => {
         if (prefillData) {
             if ('requester' in prefillData) { // Request or LoanRequest
-                if ('order' in prefillData) { // Request
+                if ('order' in prefillData) { // Request (Permintaan Barang Baru)
                     const request = prefillData as Request;
                     const recipientUser = users.find(u => u.name === request.requester);
                     if (recipientUser) {
@@ -309,7 +335,7 @@ const HandoverForm: React.FC<{
                     }
                     setWoRoIntNumber(request.id);
                     
-                    // --- SAFETY UPDATE: Filter out REJECTED items ---
+                    // Filter items valid & cari aset
                     const validItems = request.items.filter(item => {
                          const status = request.itemStatuses?.[item.id];
                          return status?.status !== 'rejected';
@@ -330,7 +356,7 @@ const HandoverForm: React.FC<{
                             checked: true
                         })));
                     } else {
-                        // Use only valid items for manual mapping
+                         // Fallback logic
                         setItems(validItems.map(item => {
                             const approvedQty = request.itemStatuses?.[item.id]?.approvedQuantity ?? item.quantity;
                             return {
@@ -345,7 +371,7 @@ const HandoverForm: React.FC<{
                         }));
                         addNotification('Aset yang baru dicatat tidak ditemukan di gudang. Harap pilih secara manual.', 'warning');
                     }
-                } else { // LoanRequest
+                } else { // LoanRequest (Permintaan Peminjaman)
                     const loanRequest = prefillData as LoanRequest;
                     const recipientUser = users.find(u => u.name === loanRequest.requester);
                     if (recipientUser) {
@@ -354,23 +380,41 @@ const HandoverForm: React.FC<{
                     }
                     setWoRoIntNumber(loanRequest.id);
 
+                    // REFACTOR: Use assignedAssetIds directly to build items
+                    // This ensures data synchronization with what was approved/assigned
                     if (loanRequest.assignedAssetIds) {
                         const assignedAssetIdsFlat = Object.values(loanRequest.assignedAssetIds).flat();
                         const assignedAssets = assets.filter(asset => assignedAssetIdsFlat.includes(asset.id));
+                        
                         if (assignedAssets.length > 0) {
                             setItems(assignedAssets.map(asset => ({
                                 id: Date.now() + Math.random(),
                                 assetId: asset.id,
                                 itemName: asset.name,
                                 itemTypeBrand: asset.brand,
-                                conditionNotes: asset.condition,
-                                quantity: 1,
+                                conditionNotes: asset.condition || 'Baik',
+                                quantity: 1, // Specific asset always 1
                                 checked: true
                             })));
+                        } else {
+                             // This might happen if assets are not loaded yet or IDs mismatch
+                             addNotification('Aset yang ditetapkan dalam pinjaman tidak ditemukan di database.', 'error');
                         }
+                    } else {
+                         // Fallback logic (Should not happen if approved correctly)
+                         setItems(loanRequest.items.map(item => ({
+                            id: Date.now() + Math.random(),
+                            assetId: '',
+                            itemName: item.itemName,
+                            itemTypeBrand: item.brand,
+                            conditionNotes: 'Kondisi baik',
+                            quantity: item.quantity,
+                            checked: true
+                        })));
+                         addNotification('Aset belum ditetapkan pada request pinjaman ini.', 'warning');
                     }
                 }
-            } else { // Asset
+            } else { // Direct Asset Selection (Single Item)
                 const asset = prefillData as Asset;
                 setItems([{
                     id: Date.now(),

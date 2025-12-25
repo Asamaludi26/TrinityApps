@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { LoanRequest, User, LoanRequestStatus, Page, Division } from '../../../../types';
+import { AssetReturn, User, Division, AssetReturnStatus, Page } from '../../../../types';
 import { useSortableData } from '../../../../hooks/useSortableData';
 import { SearchIcon } from '../../../../components/icons/SearchIcon';
 import { FilterIcon } from '../../../../components/icons/FilterIcon';
@@ -8,33 +8,29 @@ import { ExportIcon } from '../../../../components/icons/ExportIcon';
 import { CustomSelect } from '../../../../components/ui/CustomSelect';
 import { PaginationControls } from '../../../../components/ui/PaginationControls';
 import DatePicker from '../../../../components/ui/DatePicker';
-import { LoanRequestTable } from './LoanRequestTable';
-import { ExportLoanRequestModal } from './ExportLoanRequestModal';
+import { ReturnRequestTable } from './ReturnRequestTable';
+import { ExportReturnRequestModal } from './ExportReturnRequestModal';
 import { exportToCSV } from '../../../../utils/csvExporter';
 
-interface LoanRequestListViewProps {
+interface ReturnRequestListViewProps {
     currentUser: User;
-    loanRequests: LoanRequest[];
+    returns: AssetReturn[];
     divisions: Division[];
-    setActivePage: (page: Page, filters?: any) => void;
-    onDetailClick: (req: LoanRequest) => void;
-    highlightedId: string | null;
+    onDetailClick: (ret: AssetReturn) => void;
 }
 
-export const LoanRequestListView: React.FC<LoanRequestListViewProps> = ({
+export const ReturnRequestListView: React.FC<ReturnRequestListViewProps> = ({
     currentUser,
-    loanRequests,
+    returns,
     divisions,
-    setActivePage,
     onDetailClick,
-    highlightedId
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
-    const initialFilterState = { status: '', division: '', startDate: null as Date | null, endDate: null as Date | null };
+    const initialFilterState = { status: '', startDate: null as Date | null, endDate: null as Date | null };
     const [filters, setFilters] = useState(initialFilterState);
     const [tempFilters, setTempFilters] = useState(filters);
     const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
@@ -58,47 +54,47 @@ export const LoanRequestListView: React.FC<LoanRequestListViewProps> = ({
         setFilters(tempFilters);
         setIsFilterPanelOpen(false);
     };
-    
+
     const handleRemoveFilter = (key: keyof typeof filters) => {
-        const newFilters = { ...filters, [key]: (key as string).includes('Date') ? null : "" };
-        setFilters(newFilters);
-        setTempFilters(newFilters);
+        setFilters((prev) => ({ ...prev, [key]: (key as string).includes('Date') ? null : "" }));
+        setTempFilters((prev) => ({ ...prev, [key]: (key as string).includes('Date') ? null : "" }));
     };
 
-    const filteredRequests = useMemo(() => {
-        let tempRequests = [...loanRequests];
+    const filteredReturns = useMemo(() => {
+        let tempReturns = [...returns];
         if (!['Admin Logistik', 'Super Admin'].includes(currentUser.role)) {
-            tempRequests = tempRequests.filter(req => req.requester === currentUser.name);
+            tempReturns = tempReturns.filter(ret => ret.returnedBy === currentUser.name);
         }
-        return tempRequests
-            .filter(req => {
-                const searchLower = searchQuery.toLowerCase();
-                return req.id.toLowerCase().includes(searchLower) ||
-                       req.requester.toLowerCase().includes(searchLower) ||
-                       req.items.some(i => i.itemName.toLowerCase().includes(searchLower));
+        
+        return tempReturns
+            .filter(ret => {
+                 const searchLower = searchQuery.toLowerCase();
+                 return ret.docNumber.toLowerCase().includes(searchLower) || 
+                        ret.assetName.toLowerCase().includes(searchLower) ||
+                        ret.returnedBy.toLowerCase().includes(searchLower) ||
+                        ret.loanDocNumber.toLowerCase().includes(searchLower);
             })
-            .filter(req => {
-                if (filters.status && req.status !== filters.status) return false;
-                if (filters.division && req.division !== filters.division) return false;
+            .filter(ret => {
+                if (filters.status && ret.status !== filters.status) return false;
                 if (filters.startDate) {
                     const start = new Date(filters.startDate); start.setHours(0,0,0,0);
-                    const reqDate = new Date(req.requestDate); reqDate.setHours(0,0,0,0);
-                    if (reqDate < start) return false;
+                    const retDate = new Date(ret.returnDate); retDate.setHours(0,0,0,0);
+                    if (retDate < start) return false;
                 }
                 if (filters.endDate) {
                     const end = new Date(filters.endDate); end.setHours(23,59,59,999);
-                    const reqDate = new Date(req.requestDate);
-                    if (reqDate > end) return false;
+                    const retDate = new Date(ret.returnDate);
+                    if (retDate > end) return false;
                 }
                 return true;
             });
-    }, [loanRequests, currentUser, searchQuery, filters]);
+    }, [returns, currentUser, searchQuery, filters]);
 
-    const { items: sortedRequests, requestSort, sortConfig } = useSortableData(filteredRequests, { key: 'requestDate', direction: 'descending' });
-    const totalItems = sortedRequests.length;
+    const { items: sortedReturns, requestSort, sortConfig } = useSortableData(filteredReturns, { key: 'returnDate', direction: 'descending' });
+    const totalItems = sortedReturns.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
-    const paginatedRequests = sortedRequests.slice(startIndex, startIndex + itemsPerPage);
+    const paginatedReturns = sortedReturns.slice(startIndex, startIndex + itemsPerPage);
 
     return (
         <>
@@ -106,9 +102,9 @@ export const LoanRequestListView: React.FC<LoanRequestListViewProps> = ({
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="relative flex-grow">
                         <SearchIcon className="absolute w-5 h-5 text-gray-400 transform -translate-y-1/2 top-1/2 left-3" />
-                        <input type="text" placeholder="Cari ID, pemohon, aset..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-10 py-2 pl-10 pr-4 text-sm text-gray-900 bg-gray-50 border border-gray-300 rounded-lg focus:ring-tm-accent focus:border-tm-accent" />
+                        <input type="text" placeholder="Cari No. Dokumen, Aset, Pengguna..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full h-10 py-2 pl-10 pr-4 text-sm text-gray-900 bg-gray-50 border border-gray-300 rounded-lg focus:ring-tm-accent focus:border-tm-accent" />
                     </div>
-                    <div className="relative" ref={filterPanelRef}>
+                     <div className="relative" ref={filterPanelRef}>
                         <button
                             onClick={() => { setTempFilters(filters); setIsFilterPanelOpen(p => !p); }}
                             className="inline-flex items-center justify-center gap-2 w-full h-10 px-4 text-sm font-semibold text-gray-700 transition-all duration-200 bg-white border border-gray-300 rounded-lg shadow-sm sm:w-auto hover:bg-gray-50"
@@ -127,24 +123,16 @@ export const LoanRequestListView: React.FC<LoanRequestListViewProps> = ({
                                          <div>
                                             <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
                                             <CustomSelect 
-                                                options={[{ value: '', label: 'Semua Status' }, ...Object.values(LoanRequestStatus).map(s => ({ value: s, label: s }))]} 
+                                                options={[{ value: '', label: 'Semua Status' }, ...Object.values(AssetReturnStatus).map(s => ({ value: s, label: s }))]} 
                                                 value={tempFilters.status} 
                                                 onChange={v => setTempFilters(f => ({ ...f, status: v }))} 
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Divisi</label>
-                                            <CustomSelect 
-                                                options={[{ value: '', label: 'Semua Divisi' }, ...divisions.map(d => ({ value: d.name, label: d.name }))]} 
-                                                value={tempFilters.division} 
-                                                onChange={v => setTempFilters(f => ({ ...f, division: v }))} 
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Periode Pengajuan</label>
+                                            <label className="block text-sm font-semibold text-gray-700 mb-2">Periode Pengembalian</label>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <div><DatePicker id="filter-start-date" selectedDate={tempFilters.startDate} onDateChange={(date) => setTempFilters(f => ({ ...f, startDate: date }))} /></div>
-                                                <div><DatePicker id="filter-end-date" selectedDate={tempFilters.endDate} onDateChange={(date) => setTempFilters(f => ({ ...f, endDate: date }))} /></div>
+                                                <div><DatePicker id="filter-start-date-ret" selectedDate={tempFilters.startDate} onDateChange={(date) => setTempFilters(f => ({ ...f, startDate: date }))} /></div>
+                                                <div><DatePicker id="filter-end-date-ret" selectedDate={tempFilters.endDate} onDateChange={(date) => setTempFilters(f => ({ ...f, endDate: date }))} /></div>
                                             </div>
                                         </div>
                                     </div>
@@ -157,18 +145,12 @@ export const LoanRequestListView: React.FC<LoanRequestListViewProps> = ({
                         )}
                     </div>
                 </div>
-                {activeFilterCount > 0 && (
-                     <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 animate-fade-in-up">
+                 {activeFilterCount > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-100 animate-fade-in-up">
                         {filters.status && (
                             <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-full">
                                 Status: <span className="font-bold">{filters.status}</span>
                                 <button onClick={() => handleRemoveFilter('status')} className="p-0.5 ml-1 rounded-full hover:bg-blue-200 text-blue-500"><CloseIcon className="w-3 h-3" /></button>
-                            </span>
-                        )}
-                        {filters.division && (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-100 rounded-full">
-                                Divisi: <span className="font-bold">{filters.division}</span>
-                                <button onClick={() => handleRemoveFilter('division')} className="p-0.5 ml-1 rounded-full hover:bg-orange-200 text-orange-500"><CloseIcon className="w-3 h-3" /></button>
                             </span>
                         )}
                         {(filters.startDate || filters.endDate) && (
@@ -181,17 +163,16 @@ export const LoanRequestListView: React.FC<LoanRequestListViewProps> = ({
                     </div>
                 )}
             </div>
-
-             <div className="overflow-hidden bg-white border border-gray-200/80 rounded-xl shadow-md">
+            
+            <div className="overflow-hidden bg-white border border-gray-200/80 rounded-xl shadow-md">
                 <div className="overflow-x-auto custom-scrollbar">
-                    <LoanRequestTable 
-                        requests={paginatedRequests} 
-                        onDetailClick={onDetailClick} 
-                        // FIX: Corrected variable name from 'loanSortConfig' to 'sortConfig'
-                        sortConfig={sortConfig} 
-                        // FIX: Corrected variable name from 'requestLoanSort' to 'requestSort'
-                        requestSort={requestSort} 
-                        highlightedId={highlightedId}
+                    <ReturnRequestTable
+                        returns={paginatedReturns}
+                        onDetailClick={onDetailClick}
+                        // FIX: Corrected variable name from 'returnSortConfig' to 'sortConfig'
+                        sortConfig={sortConfig}
+                        // FIX: Corrected variable name from 'requestReturnSort' to 'requestSort'
+                        requestSort={requestSort}
                     />
                 </div>
                 <PaginationControls 
@@ -202,17 +183,17 @@ export const LoanRequestListView: React.FC<LoanRequestListViewProps> = ({
                     onPageChange={setCurrentPage} 
                     onItemsPerPageChange={setItemsPerPage} 
                     startIndex={startIndex} 
-                    endIndex={startIndex + paginatedRequests.length} 
+                    endIndex={startIndex + paginatedReturns.length} 
                 />
             </div>
-            
+
             {isExportModalOpen && (
-                <ExportLoanRequestModal 
-                    isOpen={true} 
-                    onClose={() => setIsExportModalOpen(false)} 
-                    currentUser={currentUser} 
-                    data={sortedRequests} 
-                    onConfirmExport={(data, filename, header) => exportToCSV(data, filename, header)} 
+                <ExportReturnRequestModal
+                    isOpen={true}
+                    onClose={() => setIsExportModalOpen(false)}
+                    currentUser={currentUser}
+                    data={sortedReturns}
+                    onConfirmExport={(data, filename, header) => exportToCSV(data, filename, header)}
                 />
             )}
         </>

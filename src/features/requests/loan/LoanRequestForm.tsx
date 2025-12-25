@@ -11,9 +11,10 @@ import { InfoIcon } from '../../../components/icons/InfoIcon';
 import { AssetIcon } from '../../../components/icons/AssetIcon';
 import { TrashIcon } from '../../../components/icons/TrashIcon';
 import { Checkbox } from '../../../components/ui/Checkbox';
-import { useAssetStore } from '../../../stores/useAssetStore'; // IMPORT Store
-import { BsLightningFill, BsBoxSeam } from 'react-icons/bs'; // NEW Icons
+import { useAssetStore } from '../../../stores/useAssetStore';
+import { BsLightningFill, BsBoxSeam } from 'react-icons/bs';
 import { generateUUID } from '../../../utils/uuid';
+import { toYYYYMMDD } from '../../../utils/dateFormatter';
 
 interface LoanRequestFormProps {
     availableAssets: Asset[];
@@ -242,7 +243,7 @@ export const LoanRequestForm: React.FC<LoanRequestFormProps> = ({ availableAsset
                         brand,
                         quantity: Number(item.quantity),
                         keterangan: item.keterangan,
-                        returnDate: item.isIndefinite ? null : item.returnDate?.toISOString().split('T')[0] || null,
+                        returnDate: item.isIndefinite ? null : toYYYYMMDD(item.returnDate),
                     };
                 }),
                 notes,

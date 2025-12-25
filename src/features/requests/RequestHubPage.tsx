@@ -34,7 +34,6 @@ const RequestHubPage: React.FC<RequestHubPageProps> = (props) => {
                     onClearInitialFilters={props.onClearInitialFilters}
                     onShowPreview={props.onShowPreview}
                     setActivePage={props.setActivePage}
-                    /* FIX: Removed markNotificationsAsRead prop as it is not present in NewRequestPageProps */
                 />
             );
         case 'request-pinjam':
@@ -61,7 +60,6 @@ const RequestHubPage: React.FC<RequestHubPageProps> = (props) => {
                     onClearInitialFilters={props.onClearInitialFilters}
                     onShowPreview={props.onShowPreview}
                     setActivePage={props.setActivePage}
-                    /* FIX: Removed markNotificationsAsRead prop as it is not present in NewRequestPageProps */
                 />
             );
     }

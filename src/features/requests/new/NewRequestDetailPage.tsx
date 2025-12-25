@@ -44,13 +44,9 @@ interface RequestDetailPageProps {
     onOpenReviewModal: () => void;
     onOpenCancellationModal: () => void;
     onOpenFollowUpModal: (req: Request) => void;
-    // REMOVED: onLogisticApproval - Moved to Sidebar internal logic
     onSubmitForCeoApproval: (id: string, data: Record<number, Omit<PurchaseDetails, 'filledBy' | 'fillDate'>>) => void;
-    // REMOVED: onFinalCeoApproval - Moved to Sidebar internal logic
     onStartProcurement: () => void;
-    // REMOVED: onUpdateRequestStatus - Moved to Sidebar internal logic
     onOpenStaging: (req: Request) => void;
-    // REMOVED: onCeoDisposition - Moved to Sidebar internal logic
     onAcknowledgeProgressUpdate: () => void;
     onRequestProgressUpdate: (id: string) => void;
     onFollowUpToCeo: (req: Request) => void;
@@ -63,7 +59,6 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
     const { request: initialRequest, currentUser, assets, onBackToList, onShowPreview, users, onSubmitForCeoApproval, assetCategories, onOpenReviewModal, isLoading, onOpenStaging } = props;
     const [isActionSidebarExpanded, setIsActionSidebarExpanded] = useState(true);
     const [itemPurchaseDetails, setItemPurchaseDetails] = useState<Record<number, Omit<PurchaseDetails, 'filledBy' | 'fillDate'>>>({});
-    const initializedRef = useRef(false);
     
     // Local state for cancellation
     const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
@@ -82,21 +77,27 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
         [storeRequests, initialRequest.id]
     );
 
-    // Initialize Purchase Details State
+    // Initialize/Sync Purchase Details State
+    // FIXED: Removed initializedRef to allow sync if store updates
     useEffect(() => {
-        if (request.purchaseDetails && !initializedRef.current) {
-             const initial: Record<number, Omit<PurchaseDetails, 'filledBy' | 'fillDate'>> = {};
+        if (request.purchaseDetails) {
+             const mappedDetails: Record<number, Omit<PurchaseDetails, 'filledBy' | 'fillDate'>> = {};
              let hasData = false;
+             
              Object.entries(request.purchaseDetails).forEach(([itemId, details]) => {
                 const d = details as PurchaseDetails;
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
                 const { filledBy, fillDate, ...rest } = d;
-                initial[Number(itemId)] = rest;
+                mappedDetails[Number(itemId)] = rest;
                 hasData = true;
              });
              
              if (hasData) {
-                 setItemPurchaseDetails(initial);
-                 initializedRef.current = true;
+                 // Only update if data is effectively different to prevent loops
+                 setItemPurchaseDetails(prev => {
+                     const isDifferent = JSON.stringify(prev) !== JSON.stringify(mappedDetails);
+                     return isDifferent ? mappedDetails : prev;
+                 });
              }
         }
     }, [request.purchaseDetails]);
@@ -211,7 +212,7 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
             
             addNotification(`Permintaan #${request.id} berhasil dibatalkan.`, 'success');
             setIsCancelModalOpen(false);
-            onBackToList(); // Return to list after cancelling
+            onBackToList();
         } catch (error) {
             addNotification('Gagal membatalkan permintaan.', 'error');
         } finally {
@@ -225,10 +226,13 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
 
              const itemsRequiringPurchase = request.items.filter(item => {
                 const itemStatus = request.itemStatuses?.[item.id];
-                // Exclude Rejected AND Stock Allocated items from purchase form validation
-                if (itemStatus?.status === 'rejected' || itemStatus?.status === 'stock_allocated') return false;
+                // FIXED: Validasi harus mengecualikan item yang ditolak (approvedQuantity === 0)
+                // bukan hanya status === 'rejected' karena status bisa undefined di awal
+                const approvedQty = itemStatus?.approvedQuantity ?? item.quantity;
+                const isRejected = approvedQty === 0;
+                const isStockAllocated = itemStatus?.status === 'stock_allocated';
                 
-                return itemStatus === undefined || itemStatus.approvedQuantity > 0;
+                return !isRejected && !isStockAllocated;
             });
 
             if (itemsRequiringPurchase.length === 0) return true;
@@ -250,8 +254,11 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
              
              const itemsRequiringPurchase = request.items.filter(item => {
                 const itemStatus = request.itemStatuses?.[item.id];
-                if (itemStatus?.status === 'rejected' || itemStatus?.status === 'stock_allocated') return false;
-                return itemStatus === undefined || itemStatus.approvedQuantity > 0;
+                const approvedQty = itemStatus?.approvedQuantity ?? item.quantity;
+                const isRejected = approvedQty === 0;
+                const isStockAllocated = itemStatus?.status === 'stock_allocated';
+
+                return !isRejected && !isStockAllocated;
             });
 
              return itemsRequiringPurchase.every(item => {
@@ -266,19 +273,19 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
     const calculatedTotalValue = useMemo(() => {
         if (request.status === ItemStatus.LOGISTIC_APPROVED && hasPermission(currentUser, 'requests:approve:purchase')) {
             return Object.values(itemPurchaseDetails).reduce((sum: number, details: Omit<PurchaseDetails, 'filledBy' | 'fillDate'>) => {
-                const price = Number(details.purchasePrice) || 0;
-                return sum + price;
+                const price = Number(details.purchasePrice);
+                return sum + (isNaN(price) ? 0 : price);
             }, 0);
         }
         
         if (request.purchaseDetails) {
             return Object.values(request.purchaseDetails).reduce((sum: number, details: PurchaseDetails) => {
-                const price = Number(details.purchasePrice) || 0;
-                return sum + price;
+                const price = Number(details.purchasePrice);
+                return sum + (isNaN(price) ? 0 : price);
             }, 0);
         }
     
-        return request.totalValue;
+        return request.totalValue || 0;
     }, [request, itemPurchaseDetails, currentUser]);
     
     // Wrapped in useCallback to prevent infinite loops in child components
@@ -291,7 +298,7 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
 
     const handleFinalSubmitForApproval = () => {
         if (!isPurchaseFormValid) {
-            addNotification('Harap isi semua detail pembelian yang wajib diisi untuk item yang disetujui (selain stok).', 'error');
+            addNotification('Harap isi semua detail pembelian yang wajib diisi untuk item yang disetujui (selain stok/ditolak).', 'error');
             return;
         }
         onSubmitForCeoApproval(request.id, itemPurchaseDetails);
@@ -305,7 +312,9 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
     const hasItemsToProcess = useMemo(() => {
         return request.items.some(item => {
              const status = request.itemStatuses?.[item.id];
-             return status?.status !== 'rejected';
+             const approvedQty = status?.approvedQuantity ?? item.quantity;
+             // Must handle purchase detail if approved > 0 AND not stock allocated
+             return approvedQty > 0 && status?.status !== 'stock_allocated';
         });
     }, [request]);
 
@@ -404,8 +413,9 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
                                         const itemStatus = request.itemStatuses?.[item.id];
                                         const approvedQuantity = itemStatus?.approvedQuantity;
                                         const isAdjusted = typeof approvedQuantity === 'number';
-                                        const isPartiallyApproved = isAdjusted && approvedQuantity > 0 && approvedQuantity < item.quantity;
+                                        // Rejected if qty explicitly set to 0
                                         const isRejected = isAdjusted && approvedQuantity === 0;
+                                        const isPartiallyApproved = isAdjusted && approvedQuantity! > 0 && approvedQuantity! < item.quantity;
                                         const isStockAllocated = itemStatus?.status === 'stock_allocated';
                                         
                                         let rowClass = 'hover:bg-slate-50/50 transition-colors';
@@ -475,7 +485,7 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
                                     const isRejected = approvedQuantity === 0;
                                     const isStockAllocated = itemStatus?.status === 'stock_allocated';
 
-                                    if (isRejected) return null; // Don't show anything for fully rejected items in purchase section
+                                    if (isRejected) return null; // Don't show form for rejected items
 
                                     if (isStockAllocated) {
                                         return (
