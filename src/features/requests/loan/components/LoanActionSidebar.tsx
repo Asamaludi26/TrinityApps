@@ -21,7 +21,7 @@ interface LoanActionSidebarProps {
     onOpenAssignment: () => void;
     onReject: (request: LoanRequest) => void;
     onOpenReturnConfirmation: () => void;
-    onInitiateReturn: (request: LoanRequest) => void;
+    onInitiateReturn: () => void; // MODIFIED: Simplified to a void function call
     onInitiateHandoverFromLoan: (request: LoanRequest) => void;
 }
 
@@ -80,7 +80,7 @@ export const LoanActionSidebar: React.FC<LoanActionSidebarProps> = (props) => {
         case LoanRequestStatus.ON_LOAN:
         case LoanRequestStatus.OVERDUE:
             if (isRequester) {
-                actions = <ActionButton onClick={() => onInitiateReturn(loanRequest)} disabled={isLoading} text="Kembalikan Aset" icon={DismantleIcon} color="primary" />;
+                actions = <ActionButton onClick={() => onInitiateReturn()} disabled={isLoading} text="Kembalikan Aset" icon={DismantleIcon} color="primary" />;
             } else if (isAdmin) {
                  actions = (
                     <div className="text-center p-4 bg-gray-50 border border-gray-200 rounded-lg">

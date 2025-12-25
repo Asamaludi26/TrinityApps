@@ -281,7 +281,6 @@ const LoanRequestPage: React.FC<LoanRequestPageProps> = (props) => {
                     <ReturnRequestListView 
                         currentUser={currentUser}
                         returns={returns}
-                        divisions={divisions}
                         onDetailClick={(ret) => setActivePage('return-detail', { returnId: ret.id })}
                     />
                 )}

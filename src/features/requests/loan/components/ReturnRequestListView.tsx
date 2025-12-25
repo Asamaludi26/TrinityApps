@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AssetReturn, User, Division, AssetReturnStatus, Page } from '../../../../types';
 import { useSortableData } from '../../../../hooks/useSortableData';
@@ -15,14 +16,12 @@ import { exportToCSV } from '../../../../utils/csvExporter';
 interface ReturnRequestListViewProps {
     currentUser: User;
     returns: AssetReturn[];
-    divisions: Division[];
     onDetailClick: (ret: AssetReturn) => void;
 }
 
 export const ReturnRequestListView: React.FC<ReturnRequestListViewProps> = ({
     currentUser,
     returns,
-    divisions,
     onDetailClick,
 }) => {
     const [searchQuery, setSearchQuery] = useState('');
@@ -169,9 +168,7 @@ export const ReturnRequestListView: React.FC<ReturnRequestListViewProps> = ({
                     <ReturnRequestTable
                         returns={paginatedReturns}
                         onDetailClick={onDetailClick}
-                        // FIX: Corrected variable name from 'returnSortConfig' to 'sortConfig'
                         sortConfig={sortConfig}
-                        // FIX: Corrected variable name from 'requestReturnSort' to 'requestSort'
                         requestSort={requestSort}
                     />
                 </div>

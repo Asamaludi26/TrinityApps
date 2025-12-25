@@ -285,20 +285,20 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                         <div><p className="font-semibold text-gray-600">Pemohon,</p><div className="flex items-center justify-center mt-2 h-28"><SignatureStamp signerName={loanRequest.requester} signatureDate={loanRequest.requestDate} signerDivision={getDivisionForUser(loanRequest.requester)} /></div><p className="pt-1 mt-2 border-t border-gray-400">({loanRequest.requester})</p></div>
                         <div><p className="font-semibold text-gray-600">Mengetahui (Admin Logistik),</p><div className="flex items-center justify-center mt-2 h-28">
                             {loanRequest.status === LoanRequestStatus.REJECTED && loanRequest.approver && <RejectionStamp rejectorName={loanRequest.approver} rejectionDate={loanRequest.approvalDate!} />}
-                            {/* FIX: Corrected typo from 'LoanRequestS' to 'LoanRequestStatus' */}
                             {loanRequest.status !== LoanRequestStatus.PENDING && loanRequest.status !== LoanRequestStatus.REJECTED && loanRequest.approver && <ApprovalStamp approverName={loanRequest.approver} approvalDate={loanRequest.approvalDate!} />}
                             {loanRequest.status === LoanRequestStatus.PENDING && <span className="italic text-gray-400">Menunggu Persetujuan</span>}
                         </div><p className="pt-1 mt-2 border-t border-gray-400">({loanRequest.approver || '.........................'})</p></div>
                     </div></section>
                 </div>
 
+                {/* INLINE ASSIGNMENT PANEL */}
                 {isAssignmentPanelOpen && (
                     <div ref={panelRef}>
-                        <AssignmentPanel
-                            request={loanRequest}
+                        <AssignmentPanel 
+                            request={loanRequest} 
                             availableAssets={availableAssetsForLoan}
-                            assetCategories={assetCategories}
-                            onConfirm={handleAssignmentConfirm}
+                            assetCategories={assetCategories} 
+                            onConfirm={handleAssignmentConfirm} 
                             onCancel={() => setIsAssignmentPanelOpen(false)}
                             setIsGlobalScannerOpen={setIsGlobalScannerOpen}
                             setScanContext={setScanContext}
@@ -307,21 +307,22 @@ const LoanRequestDetailPage: React.FC<LoanRequestDetailPageProps> = (props) => {
                     </div>
                 )}
             </div>
-
-            {isReturnModalOpen && (
-                <ReturnSelectionModal
-                    isOpen={isReturnModalOpen}
-                    onClose={() => setIsReturnModalOpen(false)}
-                    request={loanRequest}
-                    assets={assets}
-                    targetStatus={AssetStatus.IN_USE}
-                    title="Ajukan Pengembalian Aset"
-                    onConfirm={(assetIds) => {
-                        setIsReturnModalOpen(false);
-                        setActivePage('return-form', { loanId: loanRequest.id, assetIds: assetIds });
-                    }}
-                />
-            )}
+            
+            <ReturnSelectionModal
+                isOpen={isReturnModalOpen}
+                onClose={() => setIsReturnModalOpen(false)}
+                request={loanRequest}
+                assets={assets} 
+                targetStatus={AssetStatus.IN_USE}
+                title="Pilih Aset untuk Dikembalikan"
+                onConfirm={(assetIds: string[]) => {
+                    setActivePage('return-form', { 
+                        loanId: loanRequest.id, 
+                        assetIds: assetIds 
+                    });
+                    setIsReturnModalOpen(false);
+                }}
+            />
         </DetailPageLayout>
     );
 };
