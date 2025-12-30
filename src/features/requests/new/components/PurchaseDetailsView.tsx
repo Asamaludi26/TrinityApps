@@ -17,7 +17,12 @@ export const PurchaseDetailsView: React.FC<{ request: Request, details: Record<n
                 <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
                     <tr>
                         <th className="p-3">Nama Barang</th>
-                        {canViewPrice(currentUser) && <th className="p-3 text-right">Harga Satuan</th>}
+                        {canViewPrice(currentUser) && (
+                            <>
+                                <th className="p-3 text-right">Harga Satuan</th>
+                                <th className="p-3 text-right">Harga Total</th>
+                            </>
+                        )}
                         <th className="p-3">Vendor</th>
                         <th className="p-3">Tgl Beli</th>
                         <th className="p-3">Akhir Garansi</th>
@@ -27,7 +32,8 @@ export const PurchaseDetailsView: React.FC<{ request: Request, details: Record<n
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                     {request.items.map(item => {
-                        const isRejected = request.itemStatuses?.[item.id]?.approvedQuantity === 0;
+                        const approvedQty = request.itemStatuses?.[item.id]?.approvedQuantity ?? item.quantity;
+                        const isRejected = approvedQty === 0;
                         const itemDetails = details[item.id];
 
                         if (isRejected) {
@@ -39,7 +45,7 @@ export const PurchaseDetailsView: React.FC<{ request: Request, details: Record<n
                                             <span className="px-1.5 py-0.5 text-[9px] font-bold text-white bg-red-500 rounded uppercase">Ditolak</span>
                                         </div>
                                     </td>
-                                    <td colSpan={6} className="p-3 text-xs italic">
+                                    <td colSpan={canViewPrice(currentUser) ? 8 : 6} className="p-3 text-xs italic">
                                         {request.itemStatuses?.[item.id]?.reason || 'Item ditolak saat proses review.'}
                                     </td>
                                 </tr>
@@ -47,11 +53,17 @@ export const PurchaseDetailsView: React.FC<{ request: Request, details: Record<n
                         }
                         
                         if (itemDetails) {
+                             const unitPrice = itemDetails.purchasePrice as unknown as number;
+                             const totalPrice = unitPrice * approvedQty;
+
                              return (
                                 <tr key={item.id} className="bg-white hover:bg-slate-50/50 transition-colors">
                                     <td className="p-3 font-bold text-slate-800">{item.itemName || 'N/A'}</td>
                                     {canViewPrice(currentUser) && (
-                                        <td className="p-3 text-right font-mono font-normal text-slate-700">Rp {(itemDetails.purchasePrice as unknown as number).toLocaleString('id-ID')}</td>
+                                        <>
+                                            <td className="p-3 text-right font-mono font-normal text-slate-700">Rp {unitPrice.toLocaleString('id-ID')}</td>
+                                            <td className="p-3 text-right font-mono font-bold text-tm-primary">Rp {totalPrice.toLocaleString('id-ID')}</td>
+                                        </>
                                     )}
                                     <td className="p-3 text-slate-600 font-normal">{itemDetails.vendor}</td>
                                     <td className="p-3 text-slate-600 whitespace-nowrap">{new Date(itemDetails.purchaseDate).toLocaleDateString('id-ID')}</td>

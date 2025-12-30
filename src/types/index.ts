@@ -1,4 +1,5 @@
 
+
 export type Page = 
   | 'dashboard' 
   | 'request' 
@@ -162,8 +163,8 @@ export interface Asset {
     category: string;
     type: string;
     brand: string;
-    serialNumber?: string;
-    macAddress?: string;
+    serialNumber?: string | null;
+    macAddress?: string | null;
     
     // Purchase Info
     purchasePrice?: number | null;

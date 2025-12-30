@@ -130,6 +130,9 @@ export const ItemPurchaseDetailsForm: React.FC<ItemPurchaseDetailsFormProps> = (
         }
         triggerChange({ warrantyEndDate: date ? date.toISOString().split('T')[0] : null });
     };
+    
+    // Calculate subtotal for display
+    const calculatedSubtotal = (typeof purchasePrice === 'number' ? purchasePrice : 0) * approvedQuantity;
 
     return (
         <div className={`border border-slate-200 rounded-lg shadow-sm transition-all duration-300 ${isDisabled ? 'bg-slate-50 opacity-60' : 'bg-white hover:border-tm-primary/50'}`}>
@@ -160,12 +163,16 @@ export const ItemPurchaseDetailsForm: React.FC<ItemPurchaseDetailsFormProps> = (
                     <div className="p-5 space-y-5 text-sm">
                         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                             <div>
-                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Harga Beli Total (Rp) <span className="text-red-500">*</span></label>
+                                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Harga Beli Satuan (Rp) <span className="text-red-500">*</span></label>
                                 <div className="relative">
                                     <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                                         <span className="text-slate-500 font-normal text-xs">Rp</span>
                                     </div>
                                     <input type="text" value={purchasePrice === '' ? '' : purchasePrice.toLocaleString('id-ID')} onChange={e => handlePriceChange(e.target.value)} required className="block w-full py-2.5 pl-10 pr-3 text-slate-900 bg-white border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-tm-primary/20 focus:border-tm-primary transition-all font-normal" />
+                                </div>
+                                {/* Subtotal Helper */}
+                                <div className="mt-1 text-right text-[10px] font-bold text-slate-400">
+                                    Harga Total: <span className="text-tm-primary">Rp {calculatedSubtotal.toLocaleString('id-ID')}</span>
                                 </div>
                             </div>
                             <div>

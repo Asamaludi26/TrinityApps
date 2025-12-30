@@ -271,21 +271,38 @@ const NewRequestDetailPage: React.FC<RequestDetailPageProps> = (props) => {
     }, [itemPurchaseDetails, request, currentUser.role]);
 
     const calculatedTotalValue = useMemo(() => {
-        if (request.status === ItemStatus.LOGISTIC_APPROVED && hasPermission(currentUser, 'requests:approve:purchase')) {
-            return Object.values(itemPurchaseDetails).reduce((sum: number, details: Omit<PurchaseDetails, 'filledBy' | 'fillDate'>) => {
-                const price = Number(details.purchasePrice);
-                return sum + (isNaN(price) ? 0 : price);
-            }, 0);
-        }
+        let total = 0;
         
-        if (request.purchaseDetails) {
-            return Object.values(request.purchaseDetails).reduce((sum: number, details: PurchaseDetails) => {
-                const price = Number(details.purchasePrice);
-                return sum + (isNaN(price) ? 0 : price);
-            }, 0);
+        // Determine source of purchase details based on current status
+        const sourceDetails = (request.status === ItemStatus.LOGISTIC_APPROVED && hasPermission(currentUser, 'requests:approve:purchase'))
+            ? itemPurchaseDetails
+            : (request.purchaseDetails || {});
+            
+        // Iterate through all available purchase details
+        Object.entries(sourceDetails).forEach(([itemIdStr, details]) => {
+            const itemId = Number(itemIdStr);
+            const item = request.items.find(i => i.id === itemId);
+            
+            if (item) {
+                // Determine effective quantity (Approved > Requested)
+                const itemStatus = request.itemStatuses?.[itemId];
+                const quantity = itemStatus?.approvedQuantity ?? item.quantity;
+                
+                // Parse Unit Price (purchasePrice from form is per unit)
+                const unitPrice = Number((details as any).purchasePrice);
+                
+                if (!isNaN(unitPrice)) {
+                    total += unitPrice * quantity;
+                }
+            }
+        });
+
+        // Fallback to saved totalValue if no details found (legacy data support)
+        if (total === 0 && request.totalValue) {
+            return request.totalValue;
         }
-    
-        return request.totalValue || 0;
+
+        return total;
     }, [request, itemPurchaseDetails, currentUser]);
     
     // Wrapped in useCallback to prevent infinite loops in child components

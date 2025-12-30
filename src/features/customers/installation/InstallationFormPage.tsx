@@ -234,7 +234,7 @@ const InstallationForm: React.FC<{
     const handleAddAsset = (assetId: string) => {
         const asset = assets.find(a => a.id === assetId);
         if (asset && !assetsInstalled.some(a => a.assetId === assetId)) {
-            setAssetsInstalled(prev => [...prev, { assetId: asset.id, assetName: asset.name, serialNumber: asset.serialNumber }]);
+            setAssetsInstalled(prev => [...prev, { assetId: asset.id, assetName: asset.name, serialNumber: asset.serialNumber ?? undefined }]);
         }
     };
     const handleRemoveAsset = (assetId: string) => {
@@ -552,7 +552,7 @@ const InstallationDetailPage: React.FC<{
                                 <th className="p-3">MAC Address</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="bg-white divide-y divide-gray-200">
                             {installation.assetsInstalled.map((asset, index) => {
                                 const fullAsset = assets.find(a => a.id === asset.assetId);
                                 return (
@@ -587,7 +587,7 @@ const InstallationDetailPage: React.FC<{
                                     <th className="p-3">Jumlah</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody className="bg-white divide-y divide-gray-200">
                                 {installation.materialsUsed.map((material, index) => (
                                     <tr key={index} className="border-b">
                                         <td className="p-3 text-center text-gray-800">{index + 1}.</td>
@@ -832,7 +832,7 @@ const InstallationFormPage: React.FC<InstallationFormPageProps> = (props) => {
             <div className="p-4 sm:p-6 md:p-8">
                 <div className="flex items-center justify-between mb-6">
                     <h1 className="text-3xl font-bold text-tm-dark">Buat Laporan Instalasi</h1>
-                    <button onClick={() => handleSetView('list')} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Kembali ke Daftar</button>
+                    <button onClick={() => setView('list')} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50">Kembali ke Daftar</button>
                 </div>
                 <div className="p-4 sm:p-6 bg-white border border-gray-200/80 rounded-xl shadow-md pb-24">
                     <InstallationForm 
@@ -948,7 +948,7 @@ const InstallationFormPage: React.FC<InstallationFormPageProps> = (props) => {
                         <div className="py-12 text-center text-gray-500"><InboxIcon className="w-12 h-12 mx-auto text-gray-300" /><p className="mt-2 font-semibold">Tidak ada data instalasi.</p></div>
                     )}
                 </div>
-                {sortedInstallations.length > 0 && <PaginationControls currentPage={currentPage} totalPages={totalPages} totalItems={sortedInstallations.length} itemsPerPage={itemsPerPage} onPageChange={setCurrentPage} onItemsPerPageChange={setItemsPerPage} startIndex={(currentPage-1)*itemsPerPage} endIndex={(currentPage-1)*itemsPerPage + paginatedInstallations.length} />}
+                {sortedInstallations.length > 0 && <PaginationControls currentPage={currentPage} totalPages={totalPages} totalItems={sortedInstallations.length} itemsPerPage={itemsPerPage} onPageChange={setCurrentPage} onItemsPerPageChange={setItemsPerPage} startIndex={(currentPage - 1) * itemsPerPage} endIndex={(currentPage - 1) * itemsPerPage + paginatedInstallations.length} />}
             </div>
         </div>
     );
